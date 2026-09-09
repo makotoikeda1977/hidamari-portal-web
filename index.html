@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f5f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#191512" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ひだまり">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="apple-touch-startup-image" href="splash-1290x2796.png"
+      media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)">
+<link rel="apple-touch-startup-image" href="splash-1179x2556.png"
+      media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)">
+<link rel="apple-touch-startup-image" href="splash-1284x2778.png"
+      media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)">
+<link rel="apple-touch-startup-image" href="splash-1170x2532.png"
+      media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)">
+<link rel="apple-touch-startup-image" href="splash-1125x2436.png"
+      media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)">
+<link rel="apple-touch-startup-image" href="splash-1242x2688.png"
+      media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)">
+<link rel="apple-touch-startup-image" href="splash-828x1792.png"
+      media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)">
+<link rel="apple-touch-startup-image" href="splash-750x1334.png"
+      media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)">
+<link rel="apple-touch-startup-image" href="splash-640x1136.png"
+      media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)">
+<link rel="stylesheet" href="style.css">
+<title>ひだまりグループ 社内ポータル</title>
+</head>
+<body>
+
+<!-- ============ ログイン / 初回登録 ============ -->
+<div id="auth" class="app" style="display:none; padding:24px 16px;">
+  <div class="brand">
+    <img src="icon-192.png" alt="" class="brand-icon">
+    <h1>ひだまりグループ</h1>
+    <p class="brand-sub">社内ポータル</p>
+    <p class="muted">DC宮原 ／ ひだまり倶楽部</p>
+  </div>
+
+  <div class="card" id="loginCard">
+    <h2>ログイン</h2>
+    <label class="field"><span>メールアドレス</span>
+      <input type="email" id="loginId" inputmode="email" autocomplete="username"
+             autocapitalize="off" spellcheck="false" placeholder="yamada@example.com"></label>
+    <label class="field"><span>パスワード</span>
+      <input type="password" id="loginPw" autocomplete="current-password"></label>
+    <button class="btn primary block" id="btnLogin">ログイン</button>
+    <p class="muted center" style="margin:14px 0 0;">
+      はじめての方は <a href="#" id="toRegister">こちらから登録</a>
+    </p>
+    <div id="demoBox" style="display:none; margin-top:18px; padding-top:16px;
+         border-top:1px dashed var(--line);">
+      <p class="muted center" style="margin-bottom:10px;">
+        検証用：押すだけで入れます</p>
+      <div id="demoList" class="list"></div>
+    </div>
+  </div>
+
+  <div class="card" id="registerCard" style="display:none;">
+    <h2>はじめての登録</h2>
+    <p class="muted">お名前と生年月日を確かめたあと、
+      <b>ログインに使うメールアドレスとパスワード</b>を決めてください。<br>
+      メールアドレスは、ふだんお使いのもので大丈夫です（会社・個人どちらでも）。</p>
+    <label class="field"><span>お名前</span>
+      <input type="text" id="regName" placeholder="例）池田 誠" autocomplete="name">
+      <span style="font-size:12px; color:var(--muted); margin-top:4px; display:block;">
+        会社に届け出ているお名前を入れてください。カタカナでも大丈夫です。</span></label>
+    <label class="field"><span>生年月日</span>
+      <input type="date" id="regBirthday"></label>
+    <label class="field"><span>メールアドレス（これがログインIDになります）</span>
+      <input type="email" id="regEmail" inputmode="email" autocomplete="email"
+             autocapitalize="off" spellcheck="false" placeholder="yamada@example.com">
+      <span style="font-size:12px; color:var(--muted); margin-top:4px; display:block;">
+        誓約書の控えや、総務からのお知らせもここに届きます。</span></label>
+    <label class="field"><span>パスワード（6文字以上）</span>
+      <input type="password" id="regPw" autocomplete="new-password"></label>
+    <label class="field"><span>パスワード（確認）</span>
+      <input type="password" id="regPw2" autocomplete="new-password"></label>
+    <button class="btn primary block" id="btnRegister">登録してはじめる</button>
+    <p class="muted center" style="margin:14px 0 0;">
+      <a href="#" id="toLogin">ログイン画面にもどる</a></p>
+  </div>
+</div>
+
+<!-- ============ 本体 ============ -->
+<div id="app" class="app" style="display:none;">
+  <div class="topbar">
+    <div>
+      <h1 id="viewTitle">ひだまりグループ</h1>
+      <div class="sub" id="whoami"></div>
+    </div>
+    <button class="btn sm ghost" id="btnAdmin" style="display:none;">管理</button>
+  </div>
+
+  <section class="view active" id="v-home"><div class="loading">読み込み中…</div></section>
+</div>
+
+<!-- ボトムシート -->
+<div class="sheet-bg" id="sheetBg">
+  <div class="sheet" id="sheet"></div>
+</div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
