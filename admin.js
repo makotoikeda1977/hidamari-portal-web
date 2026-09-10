@@ -1165,15 +1165,27 @@ async function renderLeaves() {
         <tbody>${d.rows.map(r => `<tr>
           <td>${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(r.company)}</td>
           <td>${esc(r.office)}</td><td>${esc(r.employment || '')}</td>
-          <td class="num">${r.granted || '<span class="badge warn">未登録</span>'}</td>
+          <td class="num">${r.no_grant ? '<span class="badge warn">未登録</span>' : r.granted}</td>
           <td class="num">${r.used}</td><td class="num">${r.pending || ''}</td>
-          <td class="num" style="font-weight:700;">${r.remain}</td>
+          <td class="num" style="font-weight:700;">${r.no_grant ? '—' : r.remain}</td>
           <td>${dutyCell(r.duty)}</td>
           <td><button class="btn sm" data-grant="${esc(r.code)}" data-name="${esc(r.name)}">付与を足す</button></td>
         </tr>`).join('')}</tbody></table></div>
+      ${d.no_grant ? `<div class="card" style="border-color:var(--warn); margin-top:14px;">
+        <b>付与がまだ入っていない方が ${d.no_grant}名 います</b>
+        <p class="muted" style="margin:6px 0 0;">
+          この方たちは残日数を「—」で表示しています（0日ではなく、分からない状態です）。
+          社員のアプリにも「付与が未登録」と出ます。
+          カオナビの有給シートに載っていない方なので、事務方の管理簿から取り込むか、
+          右の「付与を足す」で1人ずつ入れてください。</p>
+        <p class="muted" style="margin:8px 0 0;">${d.no_grant_names.map(esc).join('　／　')}</p>
+      </div>` : ''}
       <p class="muted" style="margin-top:12px;">
         年10日以上付与された方は、基準日から1年のあいだに5日取得させる義務があります（労基法39条7項）。
-        残り120日を切って未達の方を「危ない人」として数えています。
+        残り120日を切って未達の方を「危ない人」として数えています。<br>
+        カオナビの有給シートには<b>付与日の項目がありません</b>。そのため
+        「カオナビ連動 → 有給を引き継ぐ」で入るのは残日数だけで、年5日の義務は判定できません。
+        判定まで行うには、付与日の入った事務方の管理簿を取り込んでください。
       </p>`;
 
     v.querySelectorAll('[data-grant]').forEach(b => b.onclick = () => openGrantForm(b.dataset.grant, b.dataset.name));
