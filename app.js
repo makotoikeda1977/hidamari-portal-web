@@ -691,7 +691,7 @@ async function renderLeaveBody() {
         </div>`).join('')}</div>`
       : '<div class="empty-state">まだ申請はありません</div>'}`;
 
-    $('newLeave').onclick = () => openLeaveForm(b);
+    $('newLeave').onclick = () => openLeaveForm(b, d.types);
     v.querySelectorAll('[data-cancel]').forEach(btn => btn.onclick = async () => {
       if (!confirm('この申請を取り消しますか？')) return;
       try { await API.call('leave.cancel', { id: btn.dataset.cancel }); toast('取り消しました'); renderLeaveBody(); }
@@ -802,45 +802,75 @@ async function renderExpenseBody() {
   } catch (e) { v.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
 }
 
-function openLeaveForm(balance) {
+function openLeaveForm(balance, types) {
+  types = types || [{ name: '年次有給休暇', kind: '有給', paid: true, reason: false, help: '' }];
   const today = new Date().toISOString().slice(0, 10);
   openSheet(`
     <div class="sheet-title"><h2>休暇の申請</h2>
       <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
     <label class="field"><span>種類</span>
       <select id="lType">
-        <option>年次有給休暇</option>
-        <option>半休</option>
-        <option>特別休暇</option>
+        ${types.map(t => `<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('')}
       </select></label>
+    <p class="muted" id="lHelp" style="margin-top:-6px;"></p>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
       <label class="field"><span>開始日</span><input type="date" id="lStart" value="${today}"></label>
       <label class="field"><span>終了日</span><input type="date" id="lEnd" value="${today}"></label>
     </div>
     <label class="field"><span>日数</span><input type="number" id="lDays" step="0.5" value="1"></label>
-    <label class="field"><span>理由（任意）</span><input type="text" id="lReason" placeholder="私用のため 等"></label>
-    <p class="muted">申請できる残り：${balance.available}日</p>
+    <label class="field"><span id="lReasonLabel">理由（任意）</span>
+      <input type="text" id="lReason" placeholder="私用のため 等"></label>
+    <p class="muted" id="lNote"></p>
+    <p class="muted" id="lRemain">申請できる残り：${balance.available}日</p>
     <button class="btn primary block" id="lSubmit">申請する</button>`);
 
+  const typeOf = () => types.find(t => t.name === $('lType').value) || types[0];
+
   const recalc = () => {
+    const t = typeOf();
     const s = $('lStart').value, e = $('lEnd').value;
-    if (!s || !e || e < s) return;
-    if ($('lType').value === '半休') { $('lDays').value = 0.5; $('lEnd').value = s; return; }
-    const n = Math.round((new Date(e) - new Date(s)) / 86400000) + 1;
-    $('lDays').value = n;
+    if (t.name === '半休') { $('lDays').value = 0.5; $('lEnd').value = s; }
+    else if (s && e && e >= s) {
+      $('lDays').value = Math.round((new Date(e) - new Date(s)) / 86400000) + 1;
+    }
+
+    $('lHelp').textContent = t.help || '';
+    $('lReasonLabel').textContent = t.reason ? '理由（必ず書いてください）' : '理由（任意）';
+    $('lReason').placeholder = t.reason ? '事情を書いてください' : '私用のため 等';
+    $('lRemain').style.display = t.paid ? '' : 'none';
+
+    // 病気で続けて休むときは、傷病手当金の対象になることがある。
+    // 総務に相談すれば手続きできる、ということだけ伝えておく。
+    const days = Number($('lDays').value) || 0;
+    $('lNote').innerHTML = (t.name === '病欠' && days >= 4)
+      ? '4日以上続けてお休みされる場合、健康保険の<b>傷病手当金</b>を受け取れることがあります。'
+        + '「総務に連絡」からご相談ください。'
+      : '';
   };
   $('lStart').onchange = recalc;
   $('lEnd').onchange = recalc;
   $('lType').onchange = recalc;
+  $('lDays').oninput = recalc;
+  recalc();
+
   $('lSubmit').onclick = async () => {
+    const t = typeOf();
+    if (t.reason && !$('lReason').value.trim()) {
+      return toast(`「${t.name}」は理由を書いてください`, 'err');
+    }
+    const b = $('lSubmit'); b.disabled = true; b.textContent = '送信中…';
     try {
       await API.call('leave.create', {
-        type: $('lType').value === '半休' ? '年次有給休暇' : $('lType').value,
+        // 半休は、勤怠のうえでは有給の0.5日として扱う
+        type: t.name === '半休' ? '年次有給休暇' : t.name,
         start_date: $('lStart').value, end_date: $('lEnd').value,
         days: Number($('lDays').value), reason: $('lReason').value
       });
       closeSheet(); toast('申請しました'); openLeaveSheet();
-    } catch (e) { toast(e.message, 'err'); }
+    } catch (e) {
+      toast(e.message, 'err');
+      b.disabled = false; b.textContent = '申請する';
+    }
   };
 }
 

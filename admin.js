@@ -1026,14 +1026,25 @@ function openOfficeForm(o) {
       <label class="field"><span>この距離まで（m）</span>
         <input type="number" id="oRadius" value="${esc(o.radius_m || '150')}"></label>
     </div>
+    <label class="field"><span>住所から探す</span>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="oAddr" placeholder="さいたま市北区宮原町3-432-2"
+               style="flex:1;" autocomplete="off">
+        <button class="btn" id="oGeo" style="white-space:nowrap;">探す</button>
+      </div></label>
+    <p class="muted" id="oGeoOut" style="margin-top:-6px;"></p>
+
     <div class="btn-row" style="margin-bottom:12px;">
       <button class="btn sm" id="oHere">いまいる場所を使う</button>
       <span class="muted" id="oHereOut" style="align-self:center;"></span>
     </div>
     <p class="muted" style="margin-top:-6px;">
-      場所は、Googleマップで事業所を右クリック → 出てきた数字をコピーしても入れられます。
-      スマホのGPSは数十メートルずれることがあるので、放課後デイでも100〜150m程度にしておくと
-      「着いているのに打刻できない」を防げます。
+      住所で探すのがいちばん早いです（国土地理院の検索を使っています）。
+      建物名まで入れると見つからないことがあるので、番地までで試してください。
+      事業所にいるときは「いまいる場所を使う」が確実です。
+      Googleマップで右クリックして出る数字を、そのまま貼っても構いません。<br>
+      スマホのGPSは数十メートルずれることがあるので、放課後デイでも100〜150m程度に
+      しておくと「着いているのに打刻できない」を防げます。
     </p>
 
     <label style="display:flex; align-items:center; gap:8px; margin:12px 0;">
@@ -1055,6 +1066,33 @@ function openOfficeForm(o) {
       ${o.name ? `<button class="btn danger" id="oDel">削除</button>` : ''}
       <button class="btn primary" id="oSave">保存</button>
     </div>`);
+
+  $('oGeo').onclick = async () => {
+    const q = $('oAddr').value.trim();
+    if (!q) return toast('住所を入れてください', 'err');
+    const out = $('oGeoOut');
+    out.textContent = '探しています…';
+    try {
+      // 国土地理院の住所検索。鍵も申し込みも要らず、日本の住所に強い
+      const r = await fetch('https://msearch.gsi.go.jp/address-search/AddressSearch?q='
+        + encodeURIComponent(q));
+      const list = await r.json();
+      if (!list.length) {
+        out.textContent = '見つかりませんでした。建物名を外して、番地までで試してみてください。';
+        return;
+      }
+      const hit = list[0];
+      const [lng, lat] = hit.geometry.coordinates;
+      $('oLat').value = lat.toFixed(6);
+      $('oLng').value = lng.toFixed(6);
+      out.innerHTML = `${esc(hit.properties.title)} → ${lat.toFixed(6)}, ${lng.toFixed(6)}`
+        + (list.length > 1 ? `<br>ほかに ${list.length - 1} 件見つかっています。`
+                           + '違っていたら、番地まで詳しく入れ直してください。' : '');
+    } catch (e) {
+      out.textContent = '住所の検索につながりませんでした: ' + e.message;
+    }
+  };
+  $('oAddr').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); $('oGeo').click(); } };
 
   if ($('oQr')) $('oQr').onclick = async () => {
     let token = o.qr_token;
