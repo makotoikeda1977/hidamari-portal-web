@@ -68,7 +68,7 @@ function render(v) {
      emps: renderEmps, offices: renderOffices, kaonavi: renderKaonavi,
      treat: renderTreatments, drive: renderDrives, incident: renderIncidents,
      contract: renderContracts, pledge: renderPledge, assets: renderAssets,
-     dir: renderDirectory, quals: renderQuals, trainings: renderTrainings,
+     dir: renderDirectory, quals: renderQuals,
      notice: renderNotice, audit: renderAudit })[v]();
 }
 
@@ -3220,113 +3220,4 @@ async function renderQuals() {
     };
     hideActionsForViewer();
   } catch (e) { v.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
-}
-
-/* ============================ 法定研修 ============================ */
-
-let TR_OFFICE = '', TR_FY = 0;
-
-async function renderTrainings() {
-  const v = $('v-trainings');
-  v.innerHTML = '<div class="loading">読み込み中…</div>';
-  try {
-    const d = await API.call('admin.trainings',
-      Object.assign({ office: TR_OFFICE }, TR_FY ? { fy: TR_FY } : {}));
-    TR_FY = d.fy;
-    const notYet = d.rows.length - d.complete;
-    setCount('cTrain', notYet);
-    v.innerHTML = `
-      <div class="kpis">
-        <div class="kpi"><b>${d.rows.length}</b><span>対象者</span></div>
-        <div class="kpi"><b>${d.complete}</b><span>ぜんぶ受けた</span></div>
-        <div class="kpi ${notYet ? 'alert' : ''}"><b>${notYet}</b><span>まだの方</span></div>
-        <div class="kpi ${d.none ? 'alert' : ''}"><b>${d.none}</b><span>ひとつも受けていない</span></div>
-      </div>
-      <div class="card-head">
-        <h2>${d.fy}年度の法定研修</h2>
-        <div style="display:flex; gap:8px;">
-          <select id="trFy">${[d.fy + 1, d.fy, d.fy - 1, d.fy - 2].map(y =>
-            `<option value="${y}" ${y === d.fy ? 'selected' : ''}>${y}年度</option>`).join('')}</select>
-          <button class="btn sm primary" id="trAdd">研修の記録を入れる</button>
-        </div>
-      </div>
-      <div class="chip-row" style="margin-bottom:12px;">
-        <button class="chip ${TR_OFFICE ? '' : 'on'}" data-o="">ぜんぶ</button>
-        ${d.offices.map(o => `<button class="chip ${TR_OFFICE === o ? 'on' : ''}"
-          data-o="${esc(o)}">${esc(o)}</button>`).join('')}
-      </div>
-      <div class="table-wrap"><table class="grid">
-        <thead><tr><th>氏名</th><th>事業所</th>
-          ${d.types.map(t => `<th style="writing-mode:vertical-rl; height:120px;">${esc(t.name)}</th>`).join('')}
-        </tr></thead>
-        <tbody>${d.rows.map(r => `<tr>
-          <td>${esc(r.name)}</td><td>${esc(r.office)}</td>
-          ${r.cells.map(c => `<td style="text-align:center;">${
-            c.ok ? `<span class="badge ok" title="${esc(c.last)}">済</span>`
-                 : (c.done ? `<span class="badge warn">${c.done}/${c.need}</span>`
-                           : '<span class="badge warn">未</span>')}</td>`).join('')}
-        </tr>`).join('')}</tbody></table></div>
-      <p class="muted" style="margin-top:12px;">
-        虐待の防止・身体拘束等の適正化・感染症・BCP の研修は、運営基準で
-        <b>全職員が年1回以上</b>（感染症は年2回以上）受けることになっています。
-        実地指導では、この表がそのまま受講記録になります。
-        ${d.range.from.slice(0, 4)}年4月1日〜${d.range.to.slice(0, 4)}年3月31日の分を数えています。</p>`;
-
-    $('trFy').onchange = () => { TR_FY = Number($('trFy').value); renderTrainings(); };
-    v.querySelectorAll('[data-o]').forEach(b => b.onclick = () => { TR_OFFICE = b.dataset.o; renderTrainings(); });
-    $('trAdd').onclick = () => openTrainingForm(d);
-    hideActionsForViewer();
-  } catch (e) { v.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
-}
-
-/**
- * 研修は事業所で集合してやるので、出席者をまとめて入れる形にしている。
- * 1人ずつ入れる形だと入力が続かず、結局だれも記録しなくなるため。
- */
-function openTrainingForm(d) {
-  const today = new Date().toISOString().slice(0, 10);
-  openSheet(`
-    <div class="sheet-title"><h2>研修の記録を入れる</h2>
-      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
-    <div class="cols">
-      <label class="field"><span>研修</span>
-        <select id="tName">${d.types.map(t => `<option>${esc(t.name)}</option>`).join('')}
-          <option>そのほかの研修</option></select></label>
-      <label class="field"><span>実施日</span>
-        <input type="date" id="tDate" value="${today}" max="${today}"></label>
-      <label class="field"><span>講師・資料（任意）</span>
-        <input type="text" id="tTrainer" placeholder="外部講師名・使った資料など"></label>
-    </div>
-    <label class="field"><span>メモ（任意）</span>
-      <input type="text" id="tNote" placeholder="内容の要点・気づいたこと"></label>
-    <div class="card-head" style="margin-top:6px;"><b>受けた方</b>
-      <div style="display:flex; gap:8px;">
-        <button class="btn sm ghost" id="tAll">この事業所ぜんぶ</button>
-        <button class="btn sm ghost" id="tNone">えらび直す</button></div></div>
-    <div class="chip-row" id="tPeople" style="max-height:260px; overflow:auto;">
-      ${d.rows.map(r => `<button class="chip" data-p="${esc(r.code)}">${esc(r.name)}</button>`).join('')}
-    </div>
-    <button class="btn primary block" style="margin-top:14px;" id="tSave">記録する</button>`);
-
-  const sel = new Set();
-  const paint = () => $('tPeople').querySelectorAll('[data-p]').forEach(b =>
-    b.classList.toggle('on', sel.has(b.dataset.p)));
-  $('tPeople').querySelectorAll('[data-p]').forEach(b => b.onclick = () => {
-    sel.has(b.dataset.p) ? sel.delete(b.dataset.p) : sel.add(b.dataset.p); paint();
-  });
-  $('tAll').onclick = () => { d.rows.forEach(r => sel.add(r.code)); paint(); };
-  $('tNone').onclick = () => { sel.clear(); paint(); };
-
-  $('tSave').onclick = async () => {
-    if (!sel.size) return toast('受けた方を選んでください', 'err');
-    try {
-      const r = await API.call('admin.training.add', {
-        name: $('tName').value, held_on: $('tDate').value,
-        trainer: $('tTrainer').value, note: $('tNote').value,
-        codes: Array.from(sel) });
-      closeSheet();
-      toast(`${r.added}名ぶん記録しました` + (r.skipped.length ? `（${r.skipped.length}名は登録ずみ）` : ''));
-      renderTrainings();
-    } catch (e) { toast(e.message, 'err'); }
-  };
 }

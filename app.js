@@ -2650,11 +2650,10 @@ async function renderMyPage() {
   const v = $('myBody');
   if (!v) return;
   try {
-    const [d, opt, tr] = await Promise.all([
-      API.call('staff.card'), API.call('staff.options'), API.call('training.mine')
+    const [d, opt] = await Promise.all([
+      API.call('staff.card'), API.call('staff.options')
     ]);
     const e = d.employee, p = d.profile;
-    const short = tr.gaps.filter(g => g.short > 0);
 
     v.innerHTML = `
       <div style="display:flex; gap:14px; align-items:center; margin-bottom:14px;">
@@ -2713,25 +2712,6 @@ async function renderMyPage() {
           </div></div>`).join('')}</div>`
           : '<div class="empty-state">まだ登録がありません</div>'}
         <button class="btn block" style="margin-top:10px;" id="qAdd">資格を登録する</button>
-      </div>
-
-      <div class="card" style="margin-top:12px; ${short.length ? 'border-color:var(--warn);' : ''}">
-        <b>${tr.fy}年度の研修</b>
-        ${short.length ? `<p style="margin:6px 0 8px; color:var(--warn);">
-            まだ受けていない研修が ${short.length}件 あります。</p>
-          <div class="list">${short.map(g => `
-            <div class="item" style="cursor:default;"><div class="grow">
-              <div class="title">${esc(g.name)}</div>
-              <div class="meta">年${g.need}回のうち ${g.done}回</div></div>
-            <span class="badge warn">あと${g.short}回</span></div>`).join('')}</div>`
-          : '<p class="muted" style="margin:6px 0 0;">必要な研修はすべて受けています。</p>'}
-        ${tr.list.length ? `<div class="list" style="margin-top:10px;">${tr.list.map(t => `
-          <div class="item" style="cursor:default;"><div class="grow">
-            <div class="title">${esc(t.name)}</div>
-            <div class="meta">${fmtYmd(t.held_on)}${t.trainer ? '　' + esc(t.trainer) : ''}</div>
-          </div><span class="badge ok">受講</span></div>`).join('')}</div>` : ''}
-        <p class="muted" style="margin:8px 0 0;">
-          受けた記録は事業所で入れます。間違いがあれば総務にご連絡ください。</p>
       </div>`;
 
     fillFaces(v);
