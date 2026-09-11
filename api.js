@@ -162,6 +162,18 @@ async function faceUrl(code) {
   return FACE_CACHE[key];
 }
 
+/**
+ * 覚えている顔写真を捨てる。
+ * 取り込みで写真を入れ替えたあとも、覚えたままだと古い顔が出つづける。
+ */
+function clearFaceCache(code) {
+  if (code === undefined) {
+    Object.keys(FACE_CACHE).forEach(k => delete FACE_CACHE[k]);
+  } else {
+    delete FACE_CACHE[String(code)];
+  }
+}
+
 /** 写真がまだ無い方は、お名前の頭文字を出す */
 const initial = (name) => String(name || '').replace(/[\s　]/g, '').slice(0, 1) || '？';
 

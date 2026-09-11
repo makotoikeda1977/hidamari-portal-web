@@ -3347,7 +3347,12 @@ function openFaceImport() {
     ].filter(Boolean).join('\n\n');
 
     $('fGo').disabled = $('fDry').disabled = false;
-    if (!dry) { toast(`${total.added}枚を入れました`); ADIR = null; renderDirectory(); }
+    if (!dry) {
+      toast(`${total.added}枚を入れました`);
+      // 覚えている顔を捨てないと、入れ替えた方は古い写真のままになる
+      clearFaceCache();
+      ADIR = null; renderDirectory();
+    }
   };
 
   $('fDry').onclick = () => run(true);
