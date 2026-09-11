@@ -517,3 +517,11 @@ table.grid tr:hover td { background: var(--accent-soft); }
 .office-head {
   margin: 16px 0 8px; font-size: 13px; font-weight: 700; color: var(--muted);
 }
+
+/* PCの管理画面では、顔を大きく出す（名簿は顔で探すもの） */
+@media (min-width: 900px) {
+  .people { grid-template-columns: repeat(auto-fill, minmax(164px, 1fr)); }
+  .people .face { width: 84px; height: 84px; font-size: 30px; }
+  .person { padding: 16px 8px; }
+  .person b { font-size: 15px; }
+}

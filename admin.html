@@ -25,8 +25,12 @@
 
   <div class="admin-body">
     <nav class="side" id="tabs">
+      <div class="side-group">社員名簿</div>
+      <button data-v="dir" class="on">顔写真つき名簿</button>
+      <button data-v="quals">資格・免許<span class="count" id="cQual" style="display:none"></span></button>
+
       <div class="side-group">勤怠</div>
-      <button data-v="dash" class="on">ダッシュボード</button>
+      <button data-v="dash">ダッシュボード</button>
       <button data-v="corr">勤怠の申告<span class="count" id="cCorr" style="display:none"></span></button>
       <button data-v="dev">遅刻・早退<span class="count" id="cDev" style="display:none"></span></button>
 
@@ -47,10 +51,6 @@
       <button data-v="drive">運行記録</button>
       <button data-v="incident">事故の報告<span class="count" id="cInc" style="display:none"></span></button>
 
-      <div class="side-group">社員名簿</div>
-      <button data-v="dir">顔写真つき名簿</button>
-      <button data-v="quals">資格・免許<span class="count" id="cQual" style="display:none"></span></button>
-
       <div class="side-group">台帳・設定</div>
       <button data-v="contract">雇用契約<span class="count" id="cCon" style="display:none"></span></button>
       <button data-v="pledge">誓約書<span class="count" id="cPle" style="display:none"></span></button>
@@ -63,7 +63,7 @@
     </nav>
     <div class="admin-main">
 
-  <section class="view active" id="v-dash"><div class="loading">読み込み中…</div></section>
+  <section class="view" id="v-dash"></section>
   <section class="view" id="v-leaves"></section>
   <section class="view" id="v-corr"></section>
   <section class="view" id="v-dev"></section>
@@ -82,7 +82,7 @@
   <section class="view" id="v-contract"></section>
   <section class="view" id="v-pledge"></section>
   <section class="view" id="v-assets"></section>
-  <section class="view" id="v-dir"></section>
+  <section class="view active" id="v-dir"><div class="loading">読み込み中…</div></section>
   <section class="view" id="v-quals"></section>
   <section class="view" id="v-audit"></section>
     </div>

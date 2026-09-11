@@ -53,10 +53,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     API.setToken(''); location.href = 'index.html';
   };
   document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => render(b.dataset.v));
-  render('dash');
+  // カオナビと同じで、開いたらまず顔が並ぶ。やることはサイドの数字で分かる
+  render('dir');
+  loadSideCounts();
 });
 
-let current = 'dash';
+let current = 'dir';
 function render(v) {
   current = v;
   document.querySelectorAll('.view').forEach(s => s.classList.remove('active'));
@@ -198,6 +200,32 @@ function setCount(id, n) {
   e.textContent = n;
 }
 
+/**
+ * サイドナビの未処理件数。
+ * 名簿から開くようになったので、ダッシュボードを見なくても
+ * 「なにが溜まっているか」は必ず分かるようにしておく。
+ */
+function setSideCounts(c) {
+  setCount('cLeave', (c.pending_leave || 0) + (c.pending_overtime || 0));
+  setCount('cChat', c.unread_chat || 0);
+  setCount('cDocs', c.docs_pending || 0);
+  setCount('cExp', c.pending_expense || 0);
+  setCount('cCorr', c.pending_correction || 0);
+  setCount('cApply', c.pending_apply || 0);
+  setCount('cDev', c.unreported_reason || 0);
+}
+
+/** 開いたときに一度だけ。どの画面から始めても件数が出るように */
+async function loadSideCounts() {
+  try {
+    const d = await API.call('admin.dashboard', { month: A.month });
+    A.dash = d;
+    setSideCounts(d.counts);
+    // 名簿は件数より先に描き終わっているので、届いたら1行ぶんだけ描き直す
+    if (current === 'dir' && ADIR) drawDirectory();
+  } catch (e) { /* 件数が出ないだけなので、画面は止めない */ }
+}
+
 /* ============================ ダッシュボード ============================ */
 
 async function renderDash() {
@@ -206,14 +234,7 @@ async function renderDash() {
   try {
     const d = await API.call('admin.dashboard', { month: A.month });
     A.dash = d;
-    // サイドナビの件数は、ここでまとめて出しておく
-    setCount('cLeave', d.counts.pending_leave + (d.counts.pending_overtime || 0));
-    setCount('cChat', d.counts.unread_chat);
-    setCount('cDocs', d.counts.docs_pending);
-    setCount('cExp', d.counts.pending_expense || 0);
-    setCount('cCorr', d.counts.pending_correction || 0);
-    setCount('cApply', d.counts.pending_apply || 0);
-    setCount('cDev', d.counts.unreported_reason || 0);
+    setSideCounts(d.counts);
 
     v.innerHTML = `
       <div id="monthlyBox"></div>
@@ -2969,16 +2990,26 @@ function drawDirectory() {
     else groups.push({ office: x.office, items: [x] });
   });
 
+  // 名簿から始まるので、溜まっている仕事への入口はここに1行だけ置く
+  const c = (A.dash && A.dash.counts) || null;
+  const todo = c ? (c.pending_leave || 0) + (c.pending_overtime || 0) + (c.unread_chat || 0)
+                 + (c.docs_pending || 0) + (c.pending_expense || 0)
+                 + (c.pending_correction || 0) + (c.pending_apply || 0) : 0;
+
   v.innerHTML = `
-    <div class="kpis">
+    ${todo ? `<div class="card" style="border-color:var(--warn); margin-bottom:12px;
+        display:flex; align-items:center; justify-content:space-between; gap:12px;">
+      <div><b>承認や確認をお待ちのものが ${todo}件 あります</b></div>
+      <button class="btn sm" id="toDash">やることを見る</button></div>` : ''}
+    <div class="card-head"><h2>社員名簿</h2>
+      <input type="search" id="adirQ" value="${esc(ADIR_Q)}"
+        placeholder="なまえ・職名・社員番号" style="width:240px;"></div>
+    <div class="kpis" style="margin-bottom:12px;">
       <div class="kpi"><b>${ADIR.staff.length}</b><span>在籍</span></div>
       <div class="kpi ${ADIR.photos < ADIR.staff.length ? 'alert' : ''}">
         <b>${ADIR.staff.length - ADIR.photos}</b><span>顔写真がまだ</span></div>
       <div class="kpi"><b>${ADIR.offices.length}</b><span>事業所</span></div>
     </div>
-    <div class="card-head"><h2>社員名簿</h2>
-      <input type="search" id="adirQ" value="${esc(ADIR_Q)}"
-        placeholder="なまえ・職名・社員番号" style="width:240px;"></div>
     <div class="chip-row" style="margin-bottom:12px;">
       <button class="chip ${ADIR_OFFICE ? '' : 'on'}" data-o="">ぜんぶ</button>
       ${ADIR.offices.map(o => `<button class="chip ${ADIR_OFFICE === o ? 'on' : ''}"
@@ -2997,6 +3028,7 @@ function drawDirectory() {
       顔写真は、入社のときに出してもらう「顔写真」をそのまま使っています。
       まだの方には「書類の提出」からお願いしてください。</p>`;
 
+  if ($('toDash')) $('toDash').onclick = () => render('dash');
   $('adirQ').oninput = () => { ADIR_Q = $('adirQ').value; drawDirectory(); $('adirQ').focus(); };
   v.querySelectorAll('[data-o]').forEach(b => b.onclick = () => { ADIR_OFFICE = b.dataset.o; drawDirectory(); });
   v.querySelectorAll('[data-code]').forEach(b => b.onclick = () => openStaffCard(b.dataset.code));
