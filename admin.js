@@ -20,13 +20,30 @@ window.addEventListener('DOMContentLoaded', async () => {
     const d = await API.call('me');
     A.me = d.me; A.month = d.month;
   } catch (e) { return location.href = 'index.html'; }
-  if (A.me.role !== 'admin' && A.me.role !== 'manager') {
+  if (['admin', 'manager', 'viewer'].indexOf(A.me.role) < 0) {
     document.body.innerHTML = '<div class="app" style="padding:40px"><div class="card">'
       + '<h2>権限がありません</h2><p class="muted">管理画面は総務・管理者のみが使えます。</p>'
       + '<a class="btn" href="index.html">社員画面へ</a></div></div>';
     return;
   }
-  $('whoami').textContent = `${A.me.name}（${A.me.role === 'admin' ? '管理者' : A.me.office + ' 管理'}）`;
+  A.viewer = (A.me.role === 'viewer');
+  $('whoami').textContent = A.viewer
+    ? `${A.me.name}（閲覧専用）`
+    : `${A.me.name}（${A.me.role === 'admin' ? '管理者' : A.me.office + ' 管理'}）`;
+
+  // 閲覧専用のときは、押せないボタンを最初から見せない。
+  // サーバ側でも弾いているが、押して断られるのは気持ちが悪いので画面からも消す。
+  if (A.viewer) {
+    document.body.classList.add('viewer-mode');
+    $('btnStaff').style.display = 'none';
+    const banner = document.createElement('div');
+    banner.className = 'viewer-banner';
+    banner.textContent = '見るための画面です。承認・修正・締めなどの操作はできません。';
+    document.querySelector('.admin-main').prepend(banner);
+    // 画面が描かれるたびに、操作のボタンを消す
+    new MutationObserver(hideActionsForViewer)
+      .observe(document.querySelector('.admin-main'), { childList: true, subtree: true });
+  }
   $('monthPick').value = A.month;
   $('monthPick').onchange = () => { A.month = $('monthPick').value; render(current); };
   $('btnStaff').onclick = () => location.href = 'index.html';
@@ -54,9 +71,121 @@ function render(v) {
      notice: renderNotice, audit: renderAudit })[v]();
 }
 
+/**
+ * 閲覧専用の方に、押せないボタンを見せない。
+ * 「開く」「見る」「ダウンロード」は残し、書き換わるものだけを消す。
+ */
+function hideActionsForViewer() {
+  if (!A.viewer) return;
+  const KEEP = ['明細', '中身を見る', '人ごとに見る', '閉じる', 'もどる',
+                'ダウンロード', 'CSV', '表をコピー', 'ログアウト', 'すべて'];
+  document.querySelectorAll('.admin-main button, #sheet button').forEach(b => {
+    if (b.dataset.viewerChecked) return;
+    b.dataset.viewerChecked = '1';
+    const t = (b.textContent || '').trim();
+    if (!t) return;
+    if (KEEP.some(k => t.indexOf(k) >= 0)) return;
+    if (b.classList.contains('chip')) return;        // 絞り込みは使える
+    if (b.dataset.v || b.dataset.detail) return;     // タブと明細も使える
+    // 承認・却下・保存・削除・締める など、中身が変わるもの
+    if (/承認|却下|保存|削除|締め|差戻|渡す|返して|取り込|作る|発行|送る|足す|変える|リセット|反映|投入|停止|招く|再送|下げる|更新|編集|追加|作成/.test(t)) {
+      b.style.display = 'none';
+    }
+  });
+}
+
+/* ---- 社外の方に見ていただくための、閲覧専用アカウント ---- */
+
+async function openViewerList() {
+  try {
+    const d = await API.call('admin.viewers');
+    openSheet(`
+      <div class="sheet-title"><h2>社外の方に見せる</h2>
+        <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+      <p class="muted">顧問社労士など、社外の方に管理画面を見ていただくためのアカウントです。
+        <b>見ることしかできません。</b>承認・修正・締め・書き出し以外の操作はできず、
+        マイナンバーなど取り扱いの決まっている書類も開けません。
+        社員の名簿や勤怠の集計にも混ざりません。</p>
+
+      <button class="btn primary block" id="vwNew" style="margin:12px 0;">
+        ＋ 閲覧専用のアカウントを作る</button>
+
+      ${d.viewers.length ? `<div class="list">${d.viewers.map(v => `
+        <div class="item" style="cursor:default;">
+          <div class="grow">
+            <div class="title">${esc(v.name)}
+              ${v.active ? '' : '<span class="badge">停止ずみ</span>'}</div>
+            <div class="meta">${esc(v.email)}<br>
+              作成 ${esc(v.created_at || '')}
+              ${v.last_login ? '／最後に開いた ' + esc(v.last_login) : '／まだ開かれていません'}</div>
+          </div>
+          ${v.active ? `<button class="btn sm danger" data-vwstop="${esc(v.code)}">止める</button>` : ''}
+        </div>`).join('')}</div>`
+      : '<div class="empty-state">まだありません</div>'}`);
+
+    $('vwNew').onclick = openViewerForm;
+    $('sheet').querySelectorAll('[data-vwstop]').forEach(b => b.onclick = async () => {
+      if (!confirm('このアカウントを止めます。すぐに開けなくなります。よろしいですか？')) return;
+      try {
+        await API.call('admin.viewer.stop', { code: b.dataset.vwstop });
+        toast('止めました'); openViewerList();
+      } catch (e) { toast(e.message, 'err'); }
+    });
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+function openViewerForm() {
+  openSheet(`
+    <div class="sheet-title"><h2>閲覧専用のアカウントを作る</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <label class="field"><span>お名前（会社名でも構いません）</span>
+      <input type="text" id="vwName" placeholder="社会保険労務士法人グランディス"></label>
+    <label class="field"><span>ログインに使うメールアドレス</span>
+      <input type="email" id="vwMail" autocapitalize="off" spellcheck="false"
+        placeholder="grandis-jimu01@uchida-sr.jp"></label>
+    <label class="field"><span>メモ（何のために作ったか）</span>
+      <input type="text" id="vwNote" placeholder="勤怠管理の仕組みを見ていただくため"></label>
+    <button class="btn primary block" id="vwGo">作る</button>
+    <p class="muted" style="margin-top:10px;">
+      パスワードはこの場で作って、1度だけお見せします。
+      こちらでは保管しませんので、控えてお渡しください。</p>`);
+
+  $('vwGo').onclick = async () => {
+    const b = $('vwGo'); b.disabled = true; b.textContent = '作成中…';
+    try {
+      const r = await API.call('admin.viewer.create', {
+        name: $('vwName').value.trim(), email: $('vwMail').value.trim(),
+        note: $('vwNote').value.trim() });
+      openSheet(`
+        <div class="sheet-title"><h2>できました</h2>
+          <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+        <div class="card" style="margin:14px 0;">
+          <div class="muted">管理画面のURL</div>
+          <div style="word-break:break-all; margin:4px 0 12px;">${esc(location.href.split('?')[0])}</div>
+          <div class="muted">ログインID</div>
+          <div style="font-weight:700; word-break:break-all; margin:4px 0 12px;">${esc(r.login_id)}</div>
+          <div class="muted">パスワード</div>
+          <div style="font-size:22px; font-weight:800; letter-spacing:.06em; margin:4px 0;">
+            ${esc(r.password)}</div>
+        </div>
+        <p class="muted">${esc(r.note)}</p>
+        <button class="btn block" id="vwCopy">この3つをコピーする</button>
+        <button class="btn ghost block" style="margin-top:8px;"
+          onclick="openViewerList()">一覧にもどる</button>`);
+      $('vwCopy').onclick = async () => {
+        const t = `管理画面 ${location.href.split('?')[0]}\n`
+          + `ログインID ${r.login_id}\nパスワード ${r.password}`;
+        try { await navigator.clipboard.writeText(t); toast('コピーしました'); }
+        catch (e) { toast('コピーできませんでした', 'err'); }
+      };
+    } catch (e) { toast(e.message, 'err'); b.disabled = false; b.textContent = '作る'; }
+  };
+}
+
 function openSheet(html) {
   $('sheet').innerHTML = html;
   $('sheetBg').classList.add('open');
+  hideActionsForViewer();
   $('sheetBg').onclick = (e) => { if (e.target === $('sheetBg')) closeSheet(); };
 }
 function closeSheet() { $('sheetBg').classList.remove('open'); }
@@ -495,6 +624,7 @@ async function renderEmps() {
         <div class="btn-row" style="margin:0;">
           <button class="btn sm primary" id="empInvite">入社前の方を招く</button>
           <button class="btn sm" id="empImport">カオナビから取り込む</button>
+          <button class="btn sm ghost" id="empViewer">社外の方に見せる</button>
         </div>
       </div>
 
@@ -570,6 +700,7 @@ async function renderEmps() {
 
     $('empImport').onclick = openEmployeeImport;
     $('empInvite').onclick = () => openInviteForm(d.app_url || '');
+    $('empViewer').onclick = openViewerList;
     v.querySelectorAll('[data-reinv]').forEach(b => b.onclick = async () => {
       const e = d.employees.find(x => x.code === b.dataset.reinv);
       if (!confirm(`${e.name} さんに、ご案内メールをもう一度送ります。よろしいですか？`)) return;

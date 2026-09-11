@@ -482,3 +482,14 @@ table.grid tr:hover td { background: var(--accent-soft); }
 /* 入社前の案内で使う、点つきの箇条書き */
 .plain-list { margin: 0; padding-left: 1.2em; }
 .plain-list li { margin: 6px 0; line-height: 1.6; }
+
+/* 閲覧専用（社外の方）に見せる帯 */
+.viewer-banner {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-weight: 700;
+}
