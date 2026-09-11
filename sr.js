@@ -19,7 +19,11 @@ const monthLabel = (m) => m ? `${Number(m.slice(0, 4))}年${Number(m.slice(5, 7)
 
 /* ============================ 入り口 ============================ */
 
-(async function boot() {
+// 画面ができてから動かす（app.js・admin.js と同じ）。
+// すぐ走らせると、まだ入力欄が無くてボタンに処理を付けられない
+window.addEventListener('DOMContentLoaded', boot);
+
+async function boot() {
   if (!API.token()) return showLogin();
   try {
     const d = await API.call('me');
@@ -32,7 +36,7 @@ const monthLabel = (m) => m ? `${Number(m.slice(0, 4))}年${Number(m.slice(5, 7)
     }
   } catch (e) { return showLogin(); }
   start();
-})();
+}
 
 function showLogin() {
   $('login').style.display = '';
