@@ -50,7 +50,7 @@ function render(v) {
      chat: renderChat, apply: renderApplications, exp: renderExpenses, docs: renderDocs,
      emps: renderEmps, offices: renderOffices, kaonavi: renderKaonavi,
      treat: renderTreatments, drive: renderDrives, incident: renderIncidents,
-     contract: renderContracts, pledge: renderPledge,
+     contract: renderContracts, pledge: renderPledge, assets: renderAssets,
      notice: renderNotice, audit: renderAudit })[v]();
 }
 
@@ -1791,6 +1791,236 @@ async function renderDrives() {
   } catch (e) { v.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
 }
 
+
+/* ============================ 貸与品 ============================ */
+
+let ASSET_FILTER = '';
+
+async function renderAssets() {
+  const v = $('v-assets');
+  v.innerHTML = '<div class="loading">読み込み中…</div>';
+  try {
+    const d = await API.call('admin.assets');
+    A.assetData = d;
+    setCount('cAsset', d.retired + d.unconfirmed);
+
+    const kinds = [...new Set(d.assets.map(a => a.kind))];
+    const shown = ASSET_FILTER ? d.assets.filter(a => a.kind === ASSET_FILTER) : d.assets;
+
+    v.innerHTML = `
+      <div class="kpis">
+        <div class="kpi"><b>${d.assets.length}</b><span>台帳の数</span></div>
+        <div class="kpi"><b>${d.lent}</b><span>貸し出し中</span></div>
+        <div class="kpi"><b>${d.free}</b><span>手元にある</span></div>
+        <div class="kpi ${d.unconfirmed ? 'alert' : ''}"><b>${d.unconfirmed}</b><span>受け取り確認まち</span></div>
+        <div class="kpi ${d.retired ? 'alert' : ''}"><b>${d.retired}</b><span>退職者が未返却</span></div>
+      </div>
+
+      ${d.retired ? `<div class="card" style="border-color:var(--warn);">
+        <b>退職された方が持ったままのものが ${d.retired}件 あります</b>
+        <p class="muted" style="margin:6px 0 0;">
+          返却の記録が入っていません。回収できていれば「返してもらう」を押してください。</p>
+        <div class="list" style="margin-top:10px;">${d.assets.filter(a => a.retired_holder).map(a => `
+          <div class="item" style="cursor:default;">
+            <div class="grow"><div class="title">${esc(a.kind)}　${esc(a.name)}</div>
+              <div class="meta">${esc(a.lent_to)}　お渡し ${esc(a.lent_on)}</div></div>
+            <button class="btn sm" data-asret="${esc(a.loan_id)}">返してもらう</button>
+          </div>`).join('')}</div>
+      </div>` : ''}
+
+      <div class="card-head">
+        <h2>貸与品の台帳</h2>
+        <div class="btn-row" style="margin:0;">
+          <button class="btn sm" id="asByPerson">人ごとに見る</button>
+          <button class="btn sm primary" id="asNew">＋ 品物を足す</button>
+        </div>
+      </div>
+
+      <div class="chip-row" style="margin-bottom:12px;">
+        <button class="chip ${ASSET_FILTER ? '' : 'on'}" data-ak="">すべて（${d.assets.length}）</button>
+        ${kinds.map(k => `<button class="chip ${ASSET_FILTER === k ? 'on' : ''}" data-ak="${esc(k)}">
+          ${esc(k)}（${d.assets.filter(a => a.kind === k).length}）</button>`).join('')}
+      </div>
+
+      ${shown.length ? `<div class="table-wrap"><table class="grid">
+        <thead><tr><th>種類</th><th>品名</th><th>メーカー</th><th>管理番号</th>
+          <th>事業所</th><th>いま持っている人</th><th>お渡し日</th><th>確認</th><th></th></tr></thead>
+        <tbody>${shown.map(a => `<tr>
+          <td>${esc(a.kind)}</td>
+          <td>${esc(a.name)}</td>
+          <td>${esc(a.maker || '')}</td>
+          <td>${esc(a.serial || '')}</td>
+          <td>${esc(a.office || '')}</td>
+          <td>${a.lent_to
+            ? esc(a.lent_to) + (a.retired_holder ? ' <span class="badge warn">退職</span>' : '')
+            : '<span class="muted">手元にあります</span>'}</td>
+          <td>${esc(a.lent_on || '')}</td>
+          <td>${!a.lent_to ? '' : a.confirmed
+            ? '<span class="badge ok">ずみ</span>'
+            : '<span class="badge warn">まち</span>'}</td>
+          <td class="btn-row" style="margin:0;">
+            ${a.lent_to
+              ? `<button class="btn sm" data-asret="${esc(a.loan_id)}">返してもらう</button>`
+              : `<button class="btn sm primary" data-aslend="${esc(a.id)}">渡す</button>`}
+            <button class="btn sm ghost" data-asedit="${esc(a.id)}">編集</button>
+          </td>
+        </tr>`).join('')}</tbody></table></div>`
+      : '<div class="empty-state">まだ登録がありません</div>'}
+
+      <p class="muted" style="margin-top:12px;">
+        鍵・パソコン・タブレット・車などを1つずつ登録し、誰に渡したかを記録します。
+        渡すと本人のアプリに出て、受け取りの確認を押してもらえます。
+        退職の手続きのときは「人ごとに見る」で、その方の未返却が一度に分かります。
+      </p>`;
+
+    v.querySelectorAll('[data-ak]').forEach(b => b.onclick = () => {
+      ASSET_FILTER = b.dataset.ak; renderAssets();
+    });
+    $('asNew').onclick = () => openAssetForm({}, d);
+    $('asByPerson').onclick = openAssetByPerson;
+    v.querySelectorAll('[data-asedit]').forEach(b => b.onclick = () =>
+      openAssetForm(d.assets.find(a => a.id === b.dataset.asedit), d));
+    v.querySelectorAll('[data-aslend]').forEach(b => b.onclick = () =>
+      openLendForm(d.assets.find(a => a.id === b.dataset.aslend), d));
+    v.querySelectorAll('[data-asret]').forEach(b => b.onclick = () =>
+      openReturnForm(b.dataset.asret, d));
+  } catch (e) { v.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
+}
+
+function openAssetForm(a, d) {
+  a = a || {};
+  openSheet(`
+    <div class="sheet-title"><h2>${a.id ? '品物の情報' : '品物を足す'}</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <div class="cols">
+      <label class="field"><span>種類</span>
+        <select id="akKind">${d.kinds.map(k =>
+          `<option ${a.kind === k ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></label>
+      <label class="field"><span>品名</span>
+        <input type="text" id="akName" value="${esc(a.name || '')}"
+          placeholder="事務所 玄関の鍵（No.3） / ThinkPad E14 など"></label>
+      <label class="field"><span>メーカー・型番</span>
+        <input type="text" id="akMaker" value="${esc(a.maker || '')}"></label>
+      <label class="field"><span>管理番号・製造番号</span>
+        <input type="text" id="akSerial" value="${esc(a.serial || '')}"></label>
+      <label class="field"><span>法人</span>
+        <input type="text" id="akCompany" value="${esc(a.company || '')}"></label>
+      <label class="field"><span>置いている事業所</span>
+        <input type="text" id="akOffice" value="${esc(a.office || '')}"></label>
+      <label class="field"><span>買った日</span>
+        <input type="date" id="akBought" value="${esc(a.bought_on || '')}"></label>
+    </div>
+    <label class="field"><span>メモ</span>
+      <input type="text" id="akNote" value="${esc(a.note || '')}"></label>
+    <div class="btn-row" style="margin-top:8px;">
+      ${a.id && !a.lent_to ? '<button class="btn danger" id="akRetire">台帳から下げる</button>' : ''}
+      <button class="btn primary" id="akSave">保存</button>
+    </div>
+    ${a.lent_to ? `<p class="muted" style="margin-top:10px;">
+      いま ${esc(a.lent_to)} に貸し出し中です。台帳から下げるには、先に返却を記録してください。</p>` : ''}`);
+
+  $('akSave').onclick = async () => {
+    try {
+      await API.call('admin.asset.save', {
+        id: a.id, kind: $('akKind').value, name: $('akName').value,
+        maker: $('akMaker').value, serial: $('akSerial').value,
+        company: $('akCompany').value, office: $('akOffice').value,
+        bought_on: $('akBought').value, note: $('akNote').value });
+      closeSheet(); toast('保存しました'); renderAssets();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  if ($('akRetire')) $('akRetire').onclick = async () => {
+    if (!confirm(`「${a.name}」を台帳から下げます。これまでの記録は残ります。`)) return;
+    try {
+      await API.call('admin.asset.retire', { id: a.id });
+      closeSheet(); toast('下げました'); renderAssets();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+}
+
+function openLendForm(a, d) {
+  const today = new Date().toISOString().slice(0, 10);
+  openSheet(`
+    <div class="sheet-title"><h2>${esc(a.kind)}　${esc(a.name)} を渡す</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <label class="field"><span>渡す相手</span>
+      <select id="alCode">
+        <option value="">— 選んでください —</option>
+        ${d.employees.map(e => `<option value="${esc(e.code)}">${esc(e.code)}　${esc(e.name)}（${esc(e.office || '')}）</option>`).join('')}
+      </select></label>
+    <label class="field"><span>お渡しした日</span>
+      <input type="date" id="alDate" value="${today}"></label>
+    <label class="field"><span>メモ（付属品・注意点など）</span>
+      <input type="text" id="alNote" placeholder="電源アダプタ・ケース付き など"></label>
+    <button class="btn primary block" id="alGo">渡した記録を残す</button>
+    <p class="muted" style="margin-top:10px;">
+      記録すると本人のアプリに出て、受け取りの確認を押してもらえます。
+      メールでもお知らせが届きます。</p>`);
+
+  $('alGo').onclick = async () => {
+    if (!$('alCode').value) return toast('渡す相手を選んでください', 'err');
+    const b = $('alGo'); b.disabled = true;
+    try {
+      await API.call('admin.asset.lend', {
+        asset_id: a.id, code: $('alCode').value,
+        lent_on: $('alDate').value, note: $('alNote').value });
+      closeSheet(); toast('記録しました'); renderAssets();
+    } catch (e) { toast(e.message, 'err'); b.disabled = false; }
+  };
+}
+
+function openReturnForm(loanId, d) {
+  const a = d.assets.find(x => x.loan_id === loanId) || {};
+  const today = new Date().toISOString().slice(0, 10);
+  openSheet(`
+    <div class="sheet-title"><h2>返却の記録</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <p class="muted">${esc(a.kind || '')}　${esc(a.name || '')}
+      ${a.lent_to ? '／ ' + esc(a.lent_to) : ''}</p>
+    <label class="field"><span>返ってきた日</span>
+      <input type="date" id="arDate" value="${today}"></label>
+    <label class="field"><span>状態</span>
+      <select id="arCond">${d.conditions.map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
+    <label class="field"><span>メモ</span>
+      <input type="text" id="arNote"></label>
+    <button class="btn primary block" id="arGo">返却として記録する</button>`);
+
+  $('arGo').onclick = async () => {
+    try {
+      await API.call('admin.asset.return', {
+        id: loanId, returned_on: $('arDate').value,
+        condition: $('arCond').value, note: $('arNote').value });
+      closeSheet(); toast('記録しました'); renderAssets();
+    } catch (e) { toast(e.message, 'err'); }
+  };
+}
+
+async function openAssetByPerson() {
+  try {
+    const d = await API.call('admin.asset.byPerson');
+    openSheet(`
+      <div class="sheet-title"><h2>誰が何を持っているか</h2>
+        <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+      <p class="muted">返却がまだのものだけを、人ごとにまとめています。
+        退職の手続きのときは、ここを見ながら回収してください。</p>
+      ${d.rows.length ? d.rows.map(r => `
+        <div class="card" style="margin-top:12px; ${r.status === '退職' ? 'border-color:var(--warn);' : ''}">
+          <div class="card-head" style="margin-bottom:6px;">
+            <h3 style="margin:0;">${esc(r.name)}
+              ${r.status === '退職' ? '<span class="badge warn">退職</span>' : ''}</h3>
+            <span class="muted">${esc(r.office || '')}</span>
+          </div>
+          <div class="list">${r.items.map(x => `
+            <div class="item" style="cursor:default;">
+              <div class="grow">
+                <div class="title">${esc(x.kind)}　${esc(x.name)}</div>
+                <div class="meta">${x.serial ? '番号 ' + esc(x.serial) + '　' : ''}お渡し ${esc(x.lent_on)}
+                  ${x.confirmed ? '' : '　<span class="badge warn">本人の確認まち</span>'}</div>
+              </div></div>`).join('')}</div>
+        </div>`).join('')
+      : '<div class="empty-state">貸し出し中のものはありません</div>'}`);
+  } catch (e) { toast(e.message, 'err'); }
+}
 
 function dueCell(date, state) {
   if (!date) return '<span class="muted">—</span>';

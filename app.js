@@ -216,6 +216,7 @@ function drawHome(v, d, stale) {
     { k: 'apply',   ic: '📋', label: '届出・証明書', badge: 0 },
     { k: 'doc',     ic: '📎', label: '書類の提出',   badge: d.doc_wait || 0 },
     { k: 'sign',    ic: '✍️', label: '雇用契約',     badge: d.sign_wait || 0 },
+    { k: 'asset',   ic: '🔑', label: '貸与品',       badge: d.asset_wait || 0 },
     { k: 'setting', ic: '⚙️', label: '設定',        badge: 0 }
   ];
 
@@ -387,7 +388,8 @@ function drawHome(v, d, stale) {
   const open = {
     kintai: openKintaiSheet, leave: openLeaveSheet, ot: openOvertimeSheet,
     expense: openExpenseSheet, chat: openChatSheet, apply: openApplyList,
-    doc: openDocList, sign: openSignList, setting: openSettingSheet
+    doc: openDocList, sign: openSignList, asset: openAssetSheet,
+    setting: openSettingSheet
   };
   v.querySelectorAll('[data-k]').forEach(b => b.onclick = () => open[b.dataset.k]());
 
@@ -872,6 +874,70 @@ function openLeaveForm(balance, types) {
       b.disabled = false; b.textContent = '申請する';
     }
   };
+}
+
+/* ============================ 貸与品 ============================ */
+
+async function openAssetSheet() {
+  openSheet(`
+    <div class="sheet-title"><h2>貸与品</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <div id="asBody"><div class="loading">読み込み中…</div></div>`);
+  await renderAssets();
+}
+
+async function renderAssets() {
+  const v = $('asBody');
+  if (!v) return;
+  try {
+    const d = await API.call('asset.mine');
+    v.innerHTML = `
+      ${d.unconfirmed ? `<div class="card first-task">
+        <b>受け取りの確認をお願いします（${d.unconfirmed}件）</b>
+        <p class="muted" style="margin:6px 0 0;">
+          お手元にあることを確認して、ボタンを押してください。</p>
+      </div>` : ''}
+
+      ${d.items.length ? `<div class="list">${d.items.map(x => `
+        <div class="item" style="cursor:default;">
+          <div class="grow">
+            <div class="title">${esc(x.kind)}　${esc(x.name)}</div>
+            <div class="meta">
+              ${x.maker ? esc(x.maker) + '　' : ''}${x.serial ? '番号 ' + esc(x.serial) + '　' : ''}
+              お渡し ${fmtDate(x.lent_on)}
+              ${x.note ? '<br>' + esc(x.note) : ''}</div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
+            ${x.confirmed_at
+              ? '<span class="badge ok">確認ずみ</span>'
+              : `<button class="btn sm primary" data-asok="${esc(x.loan_id)}">受け取りました</button>`}
+          </div>
+        </div>`).join('')}</div>`
+      : '<div class="empty-state">いまお借りしているものはありません</div>'}
+
+      <p class="muted" style="margin-top:14px;">
+        鍵・パソコン・タブレット・車などをお渡ししたときに、ここに出ます。
+        なくした・こわれたときは「総務に連絡」からお知らせください。
+        退職のときは、ここにあるものを返却していただきます。</p>
+
+      ${d.past.length ? `<div class="card" style="margin-top:14px;">
+        <div class="card-head"><h3 style="margin:0;">返却ずみ</h3></div>
+        <div class="list">${d.past.map(x => `
+          <div class="item" style="cursor:default;">
+            <div class="grow">
+              <div class="title">${esc(x.kind)}　${esc(x.name)}</div>
+              <div class="meta">${fmtDate(x.lent_on)} 〜 ${fmtDate(x.returned_on)}</div>
+            </div></div>`).join('')}</div>
+      </div>` : ''}`;
+
+    v.querySelectorAll('[data-asok]').forEach(b => b.onclick = async () => {
+      b.disabled = true;
+      try {
+        await API.call('asset.confirm', { id: b.dataset.asok });
+        toast('確認しました'); renderAssets(); renderHome();
+      } catch (e) { toast(e.message, 'err'); b.disabled = false; }
+    });
+  } catch (e) { v.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
 }
 
 /* ============================ 総務への連絡 ============================ */
@@ -1571,6 +1637,16 @@ function openApplyForm(type) {
       return `<label class="field"><span>${esc(f.label)}${req}</span>
         <textarea data-k="${esc(f.key)}" placeholder="${esc(f.placeholder || '')}"></textarea></label>`;
     }
+    // 複数えらべるもの（作るアカウントの種類など）。
+    // 選んだものを「／」でつないだ1つの文字列にして送る
+    if (f.type === 'checks') {
+      return `<div class="field"><span>${esc(f.label)}${req}</span>
+        <div class="chip-row" data-checks="${esc(f.key)}" style="margin-top:6px;">
+          ${f.options.map(o => `<button type="button" class="chip ck"
+            data-v="${esc(o)}">${esc(o)}</button>`).join('')}
+        </div>
+        <input type="hidden" data-k="${esc(f.key)}"></div>`;
+    }
     return `<label class="field"><span>${esc(f.label)}${req}</span>
       <input type="${f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}"
         data-k="${esc(f.key)}" placeholder="${esc(f.placeholder || '')}"></label>`;
@@ -1588,6 +1664,16 @@ function openApplyForm(type) {
       <textarea id="apNote" style="min-height:60px;"></textarea></label>
     <button class="btn primary block" id="apSend">総務に送る</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="openApplyList()">もどる</button>`);
+
+  // 複数えらべる欄。押すたびに入り／切りが変わる
+  $('apFields').querySelectorAll('[data-checks]').forEach(box => {
+    const hidden = box.parentElement.querySelector('input[type=hidden]');
+    box.querySelectorAll('.chip.ck').forEach(b => b.onclick = () => {
+      b.classList.toggle('on');
+      hidden.value = [...box.querySelectorAll('.chip.ck.on')]
+        .map(x => x.dataset.v).join('／');
+    });
+  });
 
   $('apSend').onclick = async () => {
     const btn = $('apSend'); btn.disabled = true; btn.textContent = '送信中…';
@@ -1955,9 +2041,15 @@ async function openTreatmentForm(date) {
         <h3 style="margin:0;">施術した方を押してください</h3>
         <button class="btn sm ghost" id="tdPatients">患者の登録</button>
       </div>
-      ${pts.length ? `<div class="chip-row" id="tdPick" style="margin-bottom:12px;">
+      ${pts.length ? `
+        ${(d.kana_rows || []).length > 1 ? `<div class="chip-row" id="tdKana" style="margin-bottom:8px;">
+          <button type="button" class="chip kana on" data-row="">ぜんぶ</button>
+          ${d.kana_rows.map(r => `<button type="button" class="chip kana" data-row="${esc(r)}">${esc(r)}</button>`).join('')}
+        </div>` : ''}
+        <div class="chip-row" id="tdPick" style="margin-bottom:12px;">
         ${pts.map(x => `<button type="button" class="chip pt" data-id="${esc(x.id)}"
-          data-name="${esc(x.name)}" data-min="${esc(x.default_minutes || '')}">${esc(x.name)}</button>`).join('')}
+          data-name="${esc(x.name)}" data-min="${esc(x.default_minutes || '')}"
+          data-kana="${esc(x.kana_row || '')}">${esc(x.name)}</button>`).join('')}
         <button type="button" class="chip" id="tdOther">＋ 登録にない方</button>
       </div>`
       : `<p class="muted">まだ患者さんを登録していません。
@@ -2012,6 +2104,15 @@ async function openTreatmentForm(date) {
     d.items.forEach(addRow);
     sum();
 
+    // かしら文字で絞る。患者さんが増えても探しやすいように
+    if ($('tdKana')) $('tdKana').querySelectorAll('.chip.kana').forEach(k => k.onclick = () => {
+      const row = k.dataset.row;
+      $('tdKana').querySelectorAll('.chip.kana').forEach(x => x.classList.toggle('on', x === k));
+      $('tdPick').querySelectorAll('.chip.pt').forEach(b => {
+        b.style.display = (!row || b.dataset.kana === row) ? '' : 'none';
+      });
+    });
+
     if ($('tdPick')) $('tdPick').querySelectorAll('.chip.pt').forEach(b => b.onclick = () => {
       const row = addRow({ patient: b.dataset.name, patient_id: b.dataset.id,
                            minutes: b.dataset.min });
@@ -2048,8 +2149,13 @@ async function openPatientList() {
       <p class="muted">登録しておくと、日報で押すだけになります。
         治療院のみなさんで共有します（代診のときも使えます）。</p>
       <button class="btn primary block" id="ptNew" style="margin:12px 0;">＋ 患者さんを登録する</button>
-      ${d.patients.length ? `<div class="list">${d.patients.map(x => `
-        <div class="item" data-pt="${esc(x.id)}">
+      ${d.patients.length ? `
+        ${(d.kana_rows || []).length > 1 ? `<div class="chip-row" id="ptKanaRow" style="margin-bottom:10px;">
+          <button type="button" class="chip kana on" data-row="">ぜんぶ</button>
+          ${d.kana_rows.map(r => `<button type="button" class="chip kana" data-row="${esc(r)}">${esc(r)}</button>`).join('')}
+        </div>` : ''}
+        <div class="list" id="ptList">${d.patients.map(x => `
+        <div class="item" data-pt="${esc(x.id)}" data-kana="${esc(x.kana_row || '')}">
           <div class="grow">
             <div class="title">${esc(x.name)}${x.mine ? '' : ' <span class="badge">ほかの方が登録</span>'}</div>
             <div class="meta">${esc(x.kana || '')}${x.default_minutes ? '　' + esc(x.default_minutes) + '分' : ''}
@@ -2060,6 +2166,13 @@ async function openPatientList() {
       <button class="btn ghost block" style="margin-top:14px;"
         onclick="openTreatmentForm()">日報にもどる</button>`);
 
+    if ($('ptKanaRow')) $('ptKanaRow').querySelectorAll('.chip.kana').forEach(k => k.onclick = () => {
+      const row = k.dataset.row;
+      $('ptKanaRow').querySelectorAll('.chip.kana').forEach(x => x.classList.toggle('on', x === k));
+      $('ptList').querySelectorAll('[data-pt]').forEach(b => {
+        b.style.display = (!row || b.dataset.kana === row) ? '' : 'none';
+      });
+    });
     $('ptNew').onclick = () => openPatientForm({}, d.minutes);
     $('sheet').querySelectorAll('[data-pt]').forEach(b => b.onclick = () =>
       openPatientForm(d.patients.find(x => x.id === b.dataset.pt), d.minutes));
