@@ -105,7 +105,7 @@ async function renderDash() {
       <div class="card-head">
         <h2>${d.month} の提出状況</h2>
         <div style="display:flex; gap:8px;">
-          <button class="btn sm" id="btnCsv">CSVをダウンロード</button>
+          <button class="btn sm" id="btnCsv">給与計算用CSV</button>
           <button class="btn sm" id="btnCopy">表をコピー</button>
           <button class="btn sm primary" id="btnClose">この月を締める</button>
         </div>
@@ -165,16 +165,59 @@ async function renderDash() {
   }
 }
 
+/** 社労士（グランディス）へ渡す給与計算用のCSV。法人ごとに分けて出せる */
 async function downloadCsv() {
-  try {
-    const d = await API.call('admin.export', { month: A.month });
-    const blob = new Blob(['﻿' + d.csv], { type: 'text/csv;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `勤怠_${A.month}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  } catch (e) { toast(e.message, 'err'); }
+  let d;
+  try { d = await API.call('admin.export', { month: A.month, record: false }); }
+  catch (e) { return toast(e.message, 'err'); }
+
+  openSheet(`
+    <div class="sheet-title"><h2>給与計算用のCSV</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <p class="muted">社労士がそのまま計算に使える形で出します。
+      割増の単価が違うもの（法定内残業・法定外残業・深夜・休日）は列を分けてあります。
+      時間はすべて「時間」の小数第1位までです。</p>
+
+    <label class="field"><span>法人</span>
+      <select id="exCompany">
+        <option value="">すべて（1つのファイル）</option>
+        ${(d.companies || []).map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+      </select></label>
+    <p class="muted" style="margin-top:-6px;">
+      DC宮原とひだまり倶楽部で分けて返ってくる運用なら、法人ごとに出すほうが確実です。</p>
+
+    <label style="display:flex; align-items:center; gap:8px; margin:12px 0;">
+      <input type="checkbox" id="exWithExpense" style="width:auto;">
+      通勤交通費も同じファイルに入れる</label>
+    <p class="muted" style="margin-top:-6px;">
+      入れないときは、交通費タブから別ファイルで出せます（いまの運用はこちら）。</p>
+
+    <div class="card" style="margin:14px 0;">
+      <h3 style="margin-bottom:6px;">出てくる列</h3>
+      <p class="muted" style="word-break:break-all;">${esc((d.header || []).join('／'))}</p>
+    </div>
+
+    <button class="btn primary block" id="exGo">ダウンロード</button>`);
+
+  $('exGo').onclick = async () => {
+    const company = $('exCompany').value;
+    const withExpense = $('exWithExpense').checked;
+    const b = $('exGo'); b.disabled = true; b.textContent = '作成中…';
+    try {
+      const r = await API.call('admin.export',
+        { month: A.month, company, with_expense: withExpense });
+      if (!r.rows.length) { toast('対象の方がいません', 'err'); return; }
+      const blob = new Blob(['\ufeff' + r.csv], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `勤怠_${A.month}${company ? '_' + company : ''}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      closeSheet();
+      toast(`${r.rows.length}名分を書き出しました`);
+    } catch (e) { toast(e.message, 'err'); }
+    finally { b.disabled = false; b.textContent = 'ダウンロード'; }
+  };
 }
 
 async function copyTable() {
