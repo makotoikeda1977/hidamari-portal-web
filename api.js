@@ -179,3 +179,32 @@ async function fillFaces(root) {
     el.textContent = '';
   }
 }
+
+/**
+ * 法人ごとの色分け。ひだまり倶楽部＝薄い青、DC宮原＝薄いオレンジ。
+ * 名簿は法人をまたいで並ぶので、色がないとどちらの社員か分からなくなる。
+ */
+function companyClass(company) {
+  const c = String(company || '');
+  if (c.indexOf('ひだまり') === 0) return 'co-hidamari';
+  if (c.indexOf('DC') === 0) return 'co-dc';
+  return '';
+}
+
+const CO_LEGEND = `<div class="co-legend">
+  <span><i class="sw-hidamari"></i>ひだまり倶楽部</span>
+  <span><i class="sw-dc"></i>DC宮原</span></div>`;
+
+/**
+ * 顔写真のファイル名から、社員番号と氏名の手がかりを取る。
+ * 総務の手元は書き方がそろっていないので、次のどれでも読めるようにする。
+ *   15_池田_誠.jpg ／ 77_峯岸宣久.jpg ／ 村田久美子_顔写真.jpg
+ */
+function readFaceFileName(fileName) {
+  const base = String(fileName).replace(/\.[^.]+$/, '');
+  const m = base.match(/^0*(\d+)[_\-\s]*(.*)$/);
+  const rest = (m ? m[2] : base)
+    .replace(/[_\-\s]*(顔写真|顔|写真|photo|face)$/i, '')
+    .replace(/[_\-\s]+/g, '');
+  return { code: m ? m[1] : '', name_hint: rest };
+}

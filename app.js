@@ -2559,15 +2559,16 @@ function renderDirectory() {
     <label class="field"><span>お名前で探す</span>
       <input type="search" id="dirQ" value="${esc(DIR_FILTER.q)}"
         placeholder="なまえ・ふりがな・職名"></label>
-    <div class="chip-row" style="margin-bottom:12px;">
+    <div class="chip-row" style="margin-bottom:10px;">
       <button class="chip ${DIR_FILTER.office ? '' : 'on'}" data-office="">ぜんぶ</button>
       ${DIR.offices.map(o => `<button class="chip ${DIR_FILTER.office === o ? 'on' : ''}"
         data-office="${esc(o)}">${esc(o)}</button>`).join('')}
     </div>
+    ${CO_LEGEND}
     ${list.length ? groups.map(g => `
       <div class="office-head">${esc(g.office || '（事業所なし）')}　${g.items.length}名</div>
       <div class="people">${g.items.map(x => `
-        <div class="person" data-code="${esc(x.code)}">
+        <div class="person ${companyClass(x.company)}" data-code="${esc(x.code)}">
           <div class="face" ${x.photo_id ? `data-face="${esc(x.photo_id)}"` : ''}>${esc(initial(x.name))}</div>
           <b>${esc(x.name)}</b>
           <span>${esc(x.job_title || x.employment || '')}</span>

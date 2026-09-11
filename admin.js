@@ -3002,8 +3002,11 @@ function drawDirectory() {
       <div><b>承認や確認をお待ちのものが ${todo}件 あります</b></div>
       <button class="btn sm" id="toDash">やることを見る</button></div>` : ''}
     <div class="card-head"><h2>社員名簿</h2>
-      <input type="search" id="adirQ" value="${esc(ADIR_Q)}"
-        placeholder="なまえ・職名・社員番号" style="width:240px;"></div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input type="search" id="adirQ" value="${esc(ADIR_Q)}"
+          placeholder="なまえ・職名・社員番号" style="width:240px;">
+        <button class="btn sm" id="btnFaces">顔写真をまとめて入れる</button>
+      </div></div>
     <div class="kpis" style="margin-bottom:12px;">
       <div class="kpi"><b>${ADIR.staff.length}</b><span>在籍</span></div>
       <div class="kpi ${ADIR.photos < ADIR.staff.length ? 'alert' : ''}">
@@ -3015,10 +3018,11 @@ function drawDirectory() {
       ${ADIR.offices.map(o => `<button class="chip ${ADIR_OFFICE === o ? 'on' : ''}"
         data-o="${esc(o)}">${esc(o)}</button>`).join('')}
     </div>
+    ${CO_LEGEND}
     ${groups.map(g => `
       <div class="office-head">${esc(g.office || '（事業所なし）')}　${g.items.length}名</div>
       <div class="people">${g.items.map(x => `
-        <div class="person" data-code="${esc(x.code)}">
+        <div class="person ${companyClass(x.company)}" data-code="${esc(x.code)}">
           <div class="face" ${x.photo_id ? `data-face="${esc(x.photo_id)}"` : ''}>${esc(initial(x.name))}</div>
           <b>${esc(x.name)}</b>
           <span>${esc(x.job_title || x.employment || '')}</span>
@@ -3029,6 +3033,7 @@ function drawDirectory() {
       まだの方には「書類の提出」からお願いしてください。</p>`;
 
   if ($('toDash')) $('toDash').onclick = () => render('dash');
+  $('btnFaces').onclick = openFaceImport;
   $('adirQ').oninput = () => { ADIR_Q = $('adirQ').value; drawDirectory(); $('adirQ').focus(); };
   v.querySelectorAll('[data-o]').forEach(b => b.onclick = () => { ADIR_OFFICE = b.dataset.o; drawDirectory(); });
   v.querySelectorAll('[data-code]').forEach(b => b.onclick = () => openStaffCard(b.dataset.code));
@@ -3252,4 +3257,89 @@ async function renderQuals() {
     };
     hideActionsForViewer();
   } catch (e) { v.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
+}
+
+/* ---- 顔写真をまとめて入れる ---- */
+
+/**
+ * ファイル名の先頭が社員番号（15_池田_誠.jpg）。
+ * 1回のやりとりに写真をたくさん載せると通信が重くて途中で落ちるので、
+ * 8枚ずつに分けて送り、どこまで進んだかを出す。
+ */
+function openFaceImport() {
+  openSheet(`
+    <div class="sheet-title"><h2>顔写真をまとめて入れる</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <p class="muted">
+      ファイル名の先頭が社員番号のもの（例 <code>15_池田_誠.jpg</code>）を選んでください。
+      フォルダごと選べます。名簿にない番号と、名字が名簿と違うものは入れずにお知らせします。</p>
+    <label class="field"><span>写真をえらぶ</span>
+      <input type="file" id="fFiles" multiple accept="image/jpeg,image/png,image/heic"></label>
+    <label style="display:flex; align-items:center; gap:10px; margin:4px 0 12px;">
+      <input type="checkbox" id="fReplace" style="width:auto;">
+      <span>すでに顔写真がある方も入れ替える</span></label>
+    <div id="fPreview"></div>
+    <button class="btn primary block" id="fGo" disabled>取り込む</button>
+    <div id="fLog" class="muted" style="margin-top:12px; white-space:pre-wrap;"></div>`);
+
+  let picked = [];
+  $('fFiles').onchange = () => {
+    picked = Array.from($('fFiles').files)
+      .map(f => Object.assign({ file: f }, readFaceFileName(f.name)));
+    const bad = picked.filter(x => !x.code && !x.name_hint);
+    $('fPreview').innerHTML = `
+      <p><b>${picked.length}枚</b>のうち、社員番号か氏名が読めたもの <b>${picked.length - bad.length}枚</b></p>
+      ${picked.some(x => !x.code) ? `<p class="muted">番号がないので氏名で探すもの：${
+        picked.filter(x => !x.code && x.name_hint).map(x => esc(x.name_hint)).join('、')}</p>` : ''}
+      ${bad.length ? `<p class="muted">読めないので入れません：${
+        bad.slice(0, 10).map(x => esc(x.file.name)).join('、')}${bad.length > 10 ? ' ほか' : ''}</p>` : ''}`;
+    $('fGo').disabled = picked.length === bad.length;
+  };
+
+  $('fGo').onclick = async () => {
+    const list = picked.filter(x => x.code || x.name_hint);
+    const replace = $('fReplace').checked;
+    $('fGo').disabled = true;
+    const log = $('fLog');
+    const total = { added: 0, replaced: 0, skipped: [], unknown: [], mismatch: [] };
+
+    for (let i = 0; i < list.length; i += 8) {
+      const chunk = list.slice(i, i + 8);
+      log.textContent = `送っています… ${i} / ${list.length}`;
+      try {
+        const items = await Promise.all(chunk.map(async x => ({
+          code: x.code, name_hint: x.name_hint, file_name: x.file.name,
+          mime: x.file.type || 'image/jpeg', data: await fileToBase64(x.file)
+        })));
+        const r = await API.call('import.faces', { items, replace });
+        total.added += r.added; total.replaced += r.replaced;
+        total.skipped.push(...r.skipped);
+        total.unknown.push(...r.unknown);
+        total.mismatch.push(...r.mismatch);
+      } catch (e) {
+        log.textContent = `途中で止まりました（${i}枚目あたり）：${e.message}`;
+        $('fGo').disabled = false;
+        return;
+      }
+    }
+
+    log.textContent = [
+      `入りました：${total.added}枚` + (total.replaced ? `（うち入れ替え ${total.replaced}枚）` : ''),
+      total.skipped.length ? `すでに写真がある方（入れませんでした）：${total.skipped.join('、')}` : '',
+      total.unknown.length ? `名簿にない番号：${total.unknown.join('、')}` : '',
+      total.mismatch.length ? `名字が名簿と違います（入れていません。ご確認ください）：\n　${total.mismatch.join('\n　')}` : ''
+    ].filter(Boolean).join('\n\n');
+    toast(`${total.added}枚を入れました`);
+    ADIR = null; renderDirectory();
+  };
+}
+
+/** ファイルを base64 に。data: の頭を落として中身だけ返す */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1]);
+    r.onerror = () => reject(new Error('ファイルが読めませんでした'));
+    r.readAsDataURL(file);
+  });
 }

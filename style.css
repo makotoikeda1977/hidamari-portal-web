@@ -525,3 +525,31 @@ table.grid tr:hover td { background: var(--accent-soft); }
   .person { padding: 16px 8px; }
   .person b { font-size: 15px; }
 }
+
+/* ---- 法人ごとの色分け（ひだまり倶楽部＝薄い青／DC宮原＝薄いオレンジ） ---- */
+:root {
+  --co-hidamari: #e9f1fb;
+  --co-hidamari-line: #c7dbf0;
+  --co-dc: #fdf0e3;
+  --co-dc-line: #f0dcc2;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --co-hidamari: #1f2c3a;
+    --co-hidamari-line: #33485f;
+    --co-dc: #352818;
+    --co-dc-line: #4d3a27;
+  }
+}
+.person.co-hidamari { background: var(--co-hidamari); border-color: var(--co-hidamari-line); }
+.person.co-dc       { background: var(--co-dc);       border-color: var(--co-dc-line); }
+.person.co-hidamari .face { background-color: #cfe0f2; color: #2b5480; }
+.person.co-dc .face       { background-color: #f4ddc2; color: var(--accent); }
+.person.co-hidamari .face.has-photo,
+.person.co-dc .face.has-photo { background-color: transparent; }
+
+/* 何色がどの法人かを、名簿の上に置く */
+.co-legend { display: flex; gap: 14px; align-items: center; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.co-legend i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; margin-right: 5px; vertical-align: -2px; }
+.co-legend .sw-hidamari { background: var(--co-hidamari); border: 1px solid var(--co-hidamari-line); }
+.co-legend .sw-dc { background: var(--co-dc); border: 1px solid var(--co-dc-line); }
