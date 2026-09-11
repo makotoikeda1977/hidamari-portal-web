@@ -1732,6 +1732,7 @@ async function renderDrives() {
     if (DRIVE_TAB === 'cars') {
       body.innerHTML = `
         <div class="card-head"><h2>車の登録</h2>
+          <button class="btn sm" id="carImport">管理簿から取り込む</button>
           <button class="btn sm primary" id="carNew">車を追加する</button></div>
         ${cars.cars.length ? `<div class="table-wrap"><table class="grid">
           <thead><tr><th>名前</th><th>ナンバー</th><th>車種</th><th>事業所</th>
@@ -1748,6 +1749,7 @@ async function renderDrives() {
           </tr>`).join('')}</tbody></table></div>`
         : '<div class="empty-state">まだ登録がありません</div>'}`;
       $('carNew').onclick = () => openCarForm({});
+      $('carImport').onclick = openCarImport;
       body.querySelectorAll('[data-car]').forEach(b => b.onclick = () =>
         openCarForm(cars.cars.find(c => c.id === b.dataset.car)));
     }
@@ -1831,6 +1833,7 @@ async function renderAssets() {
       <div class="card-head">
         <h2>貸与品の台帳</h2>
         <div class="btn-row" style="margin:0;">
+          <button class="btn sm" id="asImport">台帳から取り込む</button>
           <button class="btn sm" id="asByPerson">人ごとに見る</button>
           <button class="btn sm primary" id="asNew">＋ 品物を足す</button>
         </div>
@@ -1878,6 +1881,7 @@ async function renderAssets() {
     });
     $('asNew').onclick = () => openAssetForm({}, d);
     $('asByPerson').onclick = openAssetByPerson;
+    $('asImport').onclick = openAssetImport;
     v.querySelectorAll('[data-asedit]').forEach(b => b.onclick = () =>
       openAssetForm(d.assets.find(a => a.id === b.dataset.asedit), d));
     v.querySelectorAll('[data-aslend]').forEach(b => b.onclick = () =>
@@ -2020,6 +2024,137 @@ async function openAssetByPerson() {
         </div>`).join('')
       : '<div class="empty-state">貸し出し中のものはありません</div>'}`);
   } catch (e) { toast(e.message, 'err'); }
+}
+
+/** いま使っている貸与品台帳（xlsx→JSON）を読み込む */
+function openAssetImport() {
+  openSheet(`
+    <div class="sheet-title"><h2>台帳から取り込む</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <p class="muted">いま総務でお使いの貸与品台帳を、そのまま取り込めます。
+      先に次のコマンドでJSONを作ってください。</p>
+    <div class="card" style="margin:12px 0;">
+      <code style="word-break:break-all; font-size:12px;">
+        python3 tools/export_assets.py ～/Desktop/貸与品管理/貸与品台帳_総務用_YYYY-MM-DD.xlsx
+      </code>
+      <p class="muted" style="margin:8px 0 0;">
+        できた assets_import.json を下から選んでください。
+        返却ずみの行は入りません。</p>
+    </div>
+    <input type="file" id="aiFile" accept="application/json,.json">
+    <div id="aiPreview" style="margin-top:14px;"></div>`);
+
+  $('aiFile').onchange = async () => {
+    const f = $('aiFile').files[0];
+    if (!f) return;
+    const pv = $('aiPreview');
+    pv.innerHTML = '<div class="loading">読んでいます…</div>';
+    let data;
+    try { data = JSON.parse(await f.text()); }
+    catch (e) { pv.innerHTML = '<p class="muted">JSONとして読めませんでした</p>'; return; }
+    const items = data.items || data;
+    try {
+      const r = await API.call('import.assets', { items, dry_run: true });
+      pv.innerHTML = `
+        <div class="kpis">
+          <div class="kpi"><b>${r.add}</b><span>入るもの</span></div>
+          <div class="kpi"><b>${r.skip}</b><span>すでにある</span></div>
+          <div class="kpi ${r.no_employee ? 'alert' : ''}"><b>${r.no_employee}</b><span>名簿にない人</span></div>
+        </div>
+        <p class="muted">${esc(r.note)}</p>
+        <p class="muted">${Object.entries(r.by_kind || {})
+          .map(([k, v]) => `${esc(k)} ${v}`).join('　／　')}</p>
+        ${r.missing && r.missing.length ? `<div class="card" style="border-color:var(--warn);">
+          <b>名簿にない方の分は入りません</b>
+          <p class="muted" style="margin:6px 0 0;">${r.missing.map(esc).join('<br>')}</p>
+        </div>` : ''}
+        ${r.skipped && r.skipped.length ? `<p class="muted" style="margin-top:10px;">
+          すでに入っているもの：${r.skipped.map(esc).join('／')}</p>` : ''}
+        <div class="table-wrap" style="margin-top:12px;"><table class="grid">
+          <thead><tr><th>種類</th><th>品名</th><th>使う人</th><th>貸与日</th></tr></thead>
+          <tbody>${r.sample.map(x => `<tr>
+            <td>${esc(x.kind)}</td><td>${esc(x.name)}</td>
+            <td>${esc(x.emp_name)}</td><td>${esc(x.lent_on || '')}</td>
+          </tr>`).join('')}</tbody></table></div>
+        ${r.add ? '<button class="btn primary block" id="aiGo" style="margin-top:14px;">'
+          + `この ${r.add}件 を取り込む</button>` : ''}`;
+
+      if ($('aiGo')) $('aiGo').onclick = async () => {
+        const b = $('aiGo'); b.disabled = true; b.textContent = '取り込み中…';
+        try {
+          const res = await API.call('import.assets', { items, dry_run: false });
+          closeSheet();
+          toast(`${res.added}件を取り込みました`);
+          renderAssets();
+        } catch (e) { toast(e.message, 'err'); b.disabled = false; b.textContent = '取り込む'; }
+      };
+    } catch (e) { pv.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+  };
+}
+
+/** いま使っている車両の管理簿（割当表＋自家用車）を読み込む */
+function openCarImport() {
+  openSheet(`
+    <div class="sheet-title"><h2>管理簿から取り込む</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <p class="muted">いまお使いの車両の管理簿を、そのまま取り込めます。
+      先に次のコマンドでJSONを作ってください。</p>
+    <div class="card" style="margin:12px 0;">
+      <code style="word-break:break-all; font-size:12px;">python3 tools/export_cars.py</code>
+      <p class="muted" style="margin:8px 0 0;">
+        ～/Desktop/車両管理/ の「社用車_割当表」と「kensho.json」を読んで、
+        cars_import.json を作ります。同じ車が両方に載っていれば、社用車のほうを使います。</p>
+    </div>
+    <input type="file" id="ciFile" accept="application/json,.json">
+    <div id="ciPreview" style="margin-top:14px;"></div>`);
+
+  $('ciFile').onchange = async () => {
+    const f = $('ciFile').files[0];
+    if (!f) return;
+    const pv = $('ciPreview');
+    pv.innerHTML = '<div class="loading">読んでいます…</div>';
+    let data;
+    try { data = JSON.parse(await f.text()); }
+    catch (e) { pv.innerHTML = '<p class="muted">JSONとして読めませんでした</p>'; return; }
+    const items = data.items || data;
+    try {
+      const r = await API.call('import.cars', { items, dry_run: true });
+      pv.innerHTML = `
+        <div class="kpis">
+          <div class="kpi"><b>${r.add}</b><span>新しく入る</span></div>
+          <div class="kpi"><b>${r.update}</b><span>上書きする</span></div>
+          <div class="kpi ${r.bad ? 'alert' : ''}"><b>${r.bad}</b><span>ナンバーが読めない</span></div>
+        </div>
+        <p class="muted">${esc(r.note)}</p>
+        ${r.collide && r.collide.length ? `<div class="card" style="border-color:var(--warn);">
+          <b>ナンバーの下4桁が同じ車があります</b>
+          <p class="muted" style="margin:6px 0 0;">
+            ${r.collide.map(esc).join('・')}<br>
+            運行記録は下4桁で車を探すので、取り違えが起きます。
+            車名で見分けられるようにしておいてください。</p>
+        </div>` : ''}
+        ${r.bad_list && r.bad_list.length
+          ? `<p class="muted">入らないもの：${r.bad_list.map(esc).join('／')}</p>` : ''}
+        <div class="table-wrap" style="margin-top:12px;"><table class="grid">
+          <thead><tr><th>車名</th><th>ナンバー</th><th>法人</th><th>車検満了</th></tr></thead>
+          <tbody>${r.sample.map(x => `<tr>
+            <td>${esc(x.name)}</td><td>${esc(x.plate)}</td>
+            <td>${esc(x.company || '')}</td><td>${esc(x.inspection_due || '')}</td>
+          </tr>`).join('')}</tbody></table></div>
+        ${(r.add + r.update) ? `<button class="btn primary block" id="ciGo" style="margin-top:14px;">
+          この ${r.add + r.update}台 を取り込む</button>` : ''}`;
+
+      if ($('ciGo')) $('ciGo').onclick = async () => {
+        const b = $('ciGo'); b.disabled = true; b.textContent = '取り込み中…';
+        try {
+          const res = await API.call('import.cars', { items, dry_run: false });
+          closeSheet();
+          toast(`追加${res.added}台・更新${res.updated}台`);
+          renderDrives();
+        } catch (e) { toast(e.message, 'err'); b.disabled = false; b.textContent = '取り込む'; }
+      };
+    } catch (e) { pv.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+  };
 }
 
 function dueCell(date, state) {
