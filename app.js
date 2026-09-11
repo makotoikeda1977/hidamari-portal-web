@@ -190,7 +190,7 @@ function installTip() {
       <div class="ic">📲</div>
       <div class="body">
         <b>ホーム画面に追加すると便利です</b>
-        ${ios ? '下の <b style="display:inline">共有</b> ボタン → 「ホーム画面に追加」'
+        ${ios ? '<b style="display:inline">共有</b> ボタン（画面の下か上にあります）→ 「ホーム画面に追加」'
               : 'メニュー（⋮）→「ホーム画面に追加」'}
         を押すと、アプリのように開けます。
       </div>
@@ -829,7 +829,7 @@ function openLeaveForm(balance, types) {
   const recalc = () => {
     const t = typeOf();
     const s = $('lStart').value, e = $('lEnd').value;
-    if (t.name === '半休') { $('lDays').value = 0.5; $('lEnd').value = s; }
+    if (t.kind === '半休') { $('lDays').value = 0.5; $('lEnd').value = s; }
     else if (s && e && e >= s) {
       $('lDays').value = Math.round((new Date(e) - new Date(s)) / 86400000) + 1;
     }
@@ -862,7 +862,7 @@ function openLeaveForm(balance, types) {
     try {
       await API.call('leave.create', {
         // 半休は、勤怠のうえでは有給の0.5日として扱う
-        type: t.name === '半休' ? '年次有給休暇' : t.name,
+        type: t.kind === '半休' ? '年次有給休暇' : t.name,
         start_date: $('lStart').value, end_date: $('lEnd').value,
         days: Number($('lDays').value), reason: $('lReason').value
       });
