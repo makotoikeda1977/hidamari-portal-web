@@ -677,7 +677,9 @@ async function renderLeaveBody() {
           （年5日の取得は法律で決まっています）。</p>` : ''}
       ${d.duty && d.duty.done ? `
         <p class="muted">今年度の取得日数は ${d.duty.taken}日です。年5日の取得は達成しています。</p>` : ''}
+      ${expireBlock(b)}
       <button class="btn primary block" style="margin:12px 0;" id="newLeave">休暇を申請する</button>
+      ${otherLeaveBlock(d)}
 
       ${d.requests.length ? `<div class="list">${d.requests.map(r => `
         <div class="item" style="cursor:default;">
@@ -700,6 +702,81 @@ async function renderLeaveBody() {
       catch (e) { toast(e.message, 'err'); }
     });
   } catch (e) { v.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+}
+
+/* ---- 有給の有効期限 ---- */
+
+/** あと何日か。期限が近いものほど強く出す */
+function daysLeft(ymd) {
+  const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const to = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((to - today) / 86400000);
+}
+
+function expireBlock(b) {
+  if (b.no_grant) return '';
+  const list = b.expiring || [];
+  if (!list.length && !b.unknown_expire) return '';
+
+  const first = list[0];
+  const left = first ? daysLeft(first.expire_date) : null;
+  const soon = left !== null && left <= 90;
+
+  return `
+    <div class="card" style="margin-top:12px; ${soon ? 'border-color:var(--warn);' : ''}">
+      <b>有効期限</b>
+      ${first ? `<p style="margin:6px 0 0;">
+          <b>${fmtYmd(first.expire_date)}</b> までに <b>${first.days}日</b> を使わないと、その分は消えます。
+          ${left !== null ? `<span class="muted">（あと${left}日）</span>` : ''}
+        </p>` : ''}
+      ${list.length > 1 ? `<div class="list" style="margin-top:8px;">${list.map(x => `
+        <div class="item" style="cursor:default;">
+          <div class="grow">
+            <div class="title">${fmtYmd(x.expire_date)} まで</div>
+            <div class="meta">${x.days}日${x.grant_date ? `　${fmtYmd(x.grant_date)} 付与` : ''}${x.estimated ? '　※付与日から2年で計算' : ''}</div>
+          </div>
+        </div>`).join('')}</div>` : ''}
+      ${first && first.estimated && list.length === 1 ? `
+        <p class="muted" style="margin:6px 0 0;">付与日から2年（法律の時効）で計算しています。</p>` : ''}
+      ${b.unknown_expire ? `
+        <p class="muted" style="margin:6px 0 0;">
+          このうち <b>${b.unknown_expire}日</b> は、前のしくみから引き継いだ分で、
+          付与日が分からないため期限を出せていません。総務で確認しています。</p>` : ''}
+      ${b.lapsed ? `
+        <p class="muted" style="margin:6px 0 0;">期限が過ぎて消えた有給が ${b.lapsed}日 あります。</p>` : ''}
+      <p class="muted" style="margin:6px 0 0;">古い有給から先に使われます。</p>
+    </div>`;
+}
+
+/* ---- 特別休暇など、有給いがいの休暇 ---- */
+
+function otherLeaveBlock(d) {
+  const rows = (d.others || []).filter(x => x.quota !== null || x.taken || x.pending);
+  if (!rows.length) return '';
+  return `
+    <div class="card" style="margin-bottom:12px;">
+      <b>${d.fy}年度の休暇（有給いがい）</b>
+      <p class="muted" style="margin:4px 0 8px;">${fmtYmd(d.fy_from)}〜${fmtYmd(d.fy_to)}</p>
+      <div class="list">${rows.map(x => `
+        <div class="item" style="cursor:default;">
+          <div class="grow">
+            <div class="title">${esc(x.type)}</div>
+            <div class="meta">取得 ${x.taken}日${x.pending ? `　申請中 ${x.pending}日` : ''}${x.note ? '　' + esc(x.note) : ''}</div>
+          </div>
+          <div style="text-align:right;">
+            ${x.quota === null
+              ? '<span class="muted" style="font-size:11px;">日数の決まりなし</span>'
+              : `<b style="font-size:18px;">${x.remain}</b><span class="muted" style="font-size:11px;">／${x.quota}日</span>`}
+          </div>
+        </div>`).join('')}</div>
+      ${rows.some(x => x.quota === null) ? `
+        <p class="muted" style="margin:8px 0 0;">
+          「日数の決まりなし」のものは、取った日数だけを数えています。
+          就業規則で日数が決まっているものは、総務に入れてもらうと残りが出ます。</p>` : ''}
+    </div>`;
 }
 
 /* ---- 残業 ---- */

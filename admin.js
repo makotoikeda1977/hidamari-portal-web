@@ -1343,6 +1343,7 @@ async function renderLeaves() {
         <div class="kpi"><b>${d.rows.length}</b><span>対象者</span></div>
         <div class="kpi ${d.duty_alert ? 'alert' : ''}"><b>${d.duty_alert}</b><span>年5日が危ない人</span></div>
         <div class="kpi ${d.no_grant ? 'alert' : ''}"><b>${d.no_grant}</b><span>付与が未登録</span></div>
+        <div class="kpi ${d.expiring_soon ? 'alert' : ''}"><b>${d.expiring_soon || 0}</b><span>90日以内に期限</span></div>
       </div>
       <div class="card-head">
         <h2>有給の管理簿</h2>
@@ -1351,15 +1352,17 @@ async function renderLeaves() {
       <div class="table-wrap"><table class="grid">
         <thead><tr><th>コード</th><th>氏名</th><th>法人</th><th>事業所</th><th>区分</th>
           <th class="num">付与</th><th class="num">取得</th><th class="num">申請中</th><th class="num">残</th>
-          <th>年5日の義務</th><th></th></tr></thead>
+          <th>次の期限</th><th>年5日の義務</th><th></th></tr></thead>
         <tbody>${d.rows.map(r => `<tr>
           <td>${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(r.company)}</td>
           <td>${esc(r.office)}</td><td>${esc(r.employment || '')}</td>
           <td class="num">${r.no_grant ? '<span class="badge warn">未登録</span>' : r.granted}</td>
           <td class="num">${r.used}</td><td class="num">${r.pending || ''}</td>
           <td class="num" style="font-weight:700;">${r.no_grant ? '—' : r.remain}</td>
+          <td>${expireCell(r)}</td>
           <td>${dutyCell(r.duty)}</td>
-          <td><button class="btn sm" data-grant="${esc(r.code)}" data-name="${esc(r.name)}">付与を足す</button></td>
+          <td><button class="btn sm" data-grant="${esc(r.code)}" data-name="${esc(r.name)}">付与を足す</button>
+            <button class="btn sm ghost" data-quota="${esc(r.code)}" data-name="${esc(r.name)}">特休の日数</button></td>
         </tr>`).join('')}</tbody></table></div>
       ${d.no_grant ? `<div class="card" style="border-color:var(--warn); margin-top:14px;">
         <b>付与がまだ入っていない方が ${d.no_grant}名 います</b>
@@ -1379,8 +1382,75 @@ async function renderLeaves() {
       </p>`;
 
     v.querySelectorAll('[data-grant]').forEach(b => b.onclick = () => openGrantForm(b.dataset.grant, b.dataset.name));
+    v.querySelectorAll('[data-quota]').forEach(b => b.onclick = () => openQuotaForm(b.dataset.quota, b.dataset.name));
     $('btnImport').onclick = openLeaveImport;
   } catch (e) { v.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
+}
+
+function expireCell(r) {
+  if (r.no_grant) return '<span class="muted">—</span>';
+  if (!r.next_expire) {
+    return r.unknown_expire
+      ? `<span class="badge warn">期限が未確定</span> <span class="muted">${r.unknown_expire}日</span>`
+      : '<span class="muted">—</span>';
+  }
+  const left = daysUntil(r.next_expire);
+  const soon = left !== null && left <= 90;
+  return `<span class="badge ${soon ? 'warn' : ''}">${r.next_expire_days}日</span>
+    <span class="muted"> ${fmtYmd(r.next_expire)}まで${left !== null ? `（あと${left}日）` : ''}${r.next_expire_estimated ? '・目安' : ''}</span>`;
+}
+
+function daysUntil(ymd) {
+  const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const to = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const now = new Date();
+  return Math.round((to - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+}
+
+/* ---- 特別休暇などの日数（年度ごと） ---- */
+
+async function openQuotaForm(code, name) {
+  openSheet(`
+    <div class="sheet-title"><h2>${esc(name)} さんの特別休暇など</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <div id="quotaBody"><div class="loading">読み込み中…</div></div>`);
+  await renderQuotaBody(code);
+}
+
+async function renderQuotaBody(code) {
+  const v = $('quotaBody');
+  if (!v) return;
+  try {
+    const d = await API.call('admin.leave.quotas', { code });
+    v.innerHTML = `
+      <p class="muted">${d.fy}年度（${fmtYmd(d.range.from)}〜${fmtYmd(d.range.to)}）の日数です。
+        空にすると「日数の決まりなし」に戻り、社員のアプリには取った日数だけが出ます。</p>
+      <div class="table-wrap"><table class="grid">
+        <thead><tr><th>休暇の種類</th><th class="num">取得</th><th class="num">申請中</th>
+          <th class="num">年度の日数</th><th class="num">残り</th><th>メモ</th><th></th></tr></thead>
+        <tbody>${d.summary.map(x => `<tr>
+          <td>${esc(x.type)}</td>
+          <td class="num">${x.taken}</td><td class="num">${x.pending || ''}</td>
+          <td class="num"><input type="number" step="0.5" min="0" style="width:80px;"
+            id="q_${esc(x.type)}" value="${x.quota === null ? '' : x.quota}"></td>
+          <td class="num">${x.remain === null ? '<span class="muted">—</span>' : x.remain}</td>
+          <td><input type="text" style="width:140px;" id="n_${esc(x.type)}" value="${esc(x.note || '')}"></td>
+          <td><button class="btn sm" data-save="${esc(x.type)}">保存</button></td>
+        </tr>`).join('')}</tbody></table></div>`;
+
+    v.querySelectorAll('[data-save]').forEach(b => b.onclick = async () => {
+      const type = b.dataset.save;
+      try {
+        await API.call('admin.leave.quota', {
+          code, type, fy: d.fy,
+          days: $('q_' + type).value, note: $('n_' + type).value });
+        toast('保存しました');
+        await renderQuotaBody(code);
+        renderLeaves();
+      } catch (e) { toast(e.message, 'err'); }
+    });
+  } catch (e) { v.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
 }
 
 function dutyCell(duty) {
