@@ -3025,8 +3025,9 @@ function drawDirectory() {
         <div class="person ${companyClass(x.company)}" data-code="${esc(x.code)}">
           <div class="face" ${x.photo_id ? `data-face="${esc(x.photo_id)}"` : ''}>${esc(initial(x.name))}</div>
           <b>${esc(x.name)}</b>
+          ${x.nickname ? `<span>${esc(x.nickname)}</span>` : ''}
           <span>${esc(x.job_title || x.employment || '')}</span>
-          <span>${esc(x.code)}</span>
+          <span>${esc(x.code)}${x.introduced ? '' : '　<span style="opacity:.6;">自己紹介まだ</span>'}</span>
         </div>`).join('')}</div>`).join('')}
     <p class="muted" style="margin-top:14px;">
       顔写真は、入社のときに出してもらう「顔写真」をそのまま使っています。
@@ -3062,12 +3063,15 @@ async function drawStaffCard(code) {
       <div style="display:flex; gap:16px; align-items:center; margin-bottom:14px;">
         <div class="face lg" ${d.photo_id ? `data-face="${esc(d.photo_id)}"` : ''}>${esc(initial(e.name))}</div>
         <div>
-          <div style="font-size:22px; font-weight:700;">${esc(e.name)}</div>
+          <div style="font-size:22px; font-weight:700;">${esc(e.name)}${
+            p.nickname ? `<span class="muted" style="font-size:15px; font-weight:400;">　${esc(p.nickname)}</span>` : ''}</div>
           <div class="muted">${esc(e.kana || '')}　${esc(e.code)}</div>
           <div class="muted" style="margin-top:4px;">
             ${esc(e.company || '')}　${esc(e.office || '')}　${esc(e.employment || '')}</div>
         </div>
       </div>
+
+      ${adminSummary(d.summary)}
 
       <div class="cols">
         <div class="card">
@@ -3358,4 +3362,25 @@ function fileToBase64(file) {
     r.onerror = () => reject(new Error('ファイルが読めませんでした'));
     r.readAsDataURL(file);
   });
+}
+
+/**
+ * カルテの先頭に「どんな方か」を出す。
+ * 台帳（入社日・電話番号）から始めると、会ったことのない方の顔が見えてこない。
+ */
+function adminSummary(sm) {
+  if (!sm) return '';
+  const facts = (sm.lines || []).map(esc).join('　／　');
+  if (!facts && !sm.written) return '';
+  return `
+    <div class="card" style="background:var(--accent-soft); border-color:var(--accent-soft);">
+      ${facts ? `<div style="font-size:13px;">${facts}</div>` : ''}
+      ${sm.intro ? `<p style="margin:8px 0 0; white-space:pre-wrap;">${esc(sm.intro)}</p>` : ''}
+      ${(sm.own || []).length ? `<div class="cols" style="margin-top:10px; gap:10px;">${sm.own.map(o => `
+        <div>
+          <span class="muted" style="font-size:11px;">${esc(o.label)}</span>
+          <div style="white-space:pre-wrap;">${esc(o.text)}</div>
+        </div>`).join('')}</div>` : ''}
+      ${!sm.written ? '<p class="muted" style="margin:6px 0 0;">自己紹介はまだ書かれていません。</p>' : ''}
+    </div>`;
 }

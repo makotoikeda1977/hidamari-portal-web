@@ -226,6 +226,7 @@ function drawHome(v, d, stale) {
   const pre = !!(d.me && d.me.pre_hire);
   const preMenu = [
     { k: 'doc',     ic: '📎', label: '書類の提出',   badge: d.doc_wait || 0 },
+    { k: 'mypage',  ic: '🪪', label: '自己紹介',     badge: d.profile_wait || 0 },
     { k: 'sign',    ic: '✍️', label: '雇用契約',     badge: d.sign_wait || 0 },
     { k: 'chat',    ic: '💬', label: '総務に連絡',   badge: d.unread_chat || 0 },
     { k: 'setting', ic: '⚙️', label: '設定',        badge: 0 }
@@ -299,6 +300,10 @@ function drawHome(v, d, stale) {
         </ul>
         <p class="muted" style="margin:10px 0 0;">
           資格証明書などは、お持ちの方だけで結構です。</p>
+        <p class="muted" style="margin:6px 0 0;">
+          書類のほかに、<b>自己紹介</b>もお願いしています。初日にお会いする前に、
+          みんながあなたのことを少し知っておけるようにするためのものです。
+          ぜんぶ書かなくて大丈夫です。</p>
       </div>
 
       <div class="menu-grid">
@@ -318,7 +323,7 @@ function drawHome(v, d, stale) {
       $('installTip').remove();
     };
     $('homeDocs').onclick = () => openDocList();
-    const preOpen = { doc: openDocList, sign: openSignList,
+    const preOpen = { doc: openDocList, sign: openSignList, mypage: openMyPageSheet,
                       chat: openChatSheet, setting: openSettingSheet };
     v.querySelectorAll('[data-k]').forEach(b => b.onclick = () => preOpen[b.dataset.k]());
     return;
@@ -2571,6 +2576,7 @@ function renderDirectory() {
         <div class="person ${companyClass(x.company)}" data-code="${esc(x.code)}">
           <div class="face" ${x.photo_id ? `data-face="${esc(x.photo_id)}"` : ''}>${esc(initial(x.name))}</div>
           <b>${esc(x.name)}</b>
+          ${x.nickname ? `<span>${esc(x.nickname)}</span>` : ''}
           <span>${esc(x.job_title || x.employment || '')}</span>
         </div>`).join('')}</div>`).join('')
       : '<div class="empty-state">見つかりませんでした</div>'}
@@ -2601,10 +2607,11 @@ async function openStaffCard(code) {
         <div class="face lg" ${d.photo_id ? `data-face="${esc(d.photo_id)}"` : ''}>${esc(initial(e.name))}</div>
         <div>
           <div style="font-size:20px; font-weight:700;">${esc(e.name)}</div>
-          <div class="muted">${esc(e.kana || '')}</div>
+          <div class="muted">${p.nickname ? esc(p.nickname) : esc(e.kana || '')}</div>
           <div class="muted" style="margin-top:4px;">${esc(e.office || '')}　${esc(p.job_title || e.employment || '')}</div>
         </div>
       </div>
+      ${summaryCard(d.summary)}
       <div class="list">
         ${e.join_date ? infoRow('入社日', fmtYmd(e.join_date)) : ''}
         ${p.department ? infoRow('担当', p.department) : ''}
@@ -2667,7 +2674,9 @@ async function renderMyPage() {
         </div>
       </div>
 
-      <div class="card">
+      ${introFormCard(opt.questions || d.questions || [], p)}
+
+      <div class="card" style="margin-top:12px;">
         <b>連絡先</b>
         <p class="muted" style="margin:4px 0 10px;">
           急な連絡や、災害のときに使います。変わったら直してください。</p>
@@ -2688,8 +2697,6 @@ async function renderMyPage() {
         </div>
         <label class="field"><span>電話番号</span>
           <input type="tel" id="pEmgTel" value="${esc(p.emg_tel || '')}"></label>
-        <label class="field"><span>名簿へのひとこと（任意）</span>
-          <textarea id="pIntro" rows="2" placeholder="担当していること、よびかた など">${esc(p.intro || '')}</textarea></label>
         <label style="display:flex; align-items:center; gap:10px; margin:12px 0;">
           <input type="checkbox" id="pHide" style="width:auto;"
             ${p.photo_public === 'no' ? 'checked' : ''}>
@@ -2721,11 +2728,21 @@ async function renderMyPage() {
         await API.call('profile.save', {
           tel: $('pTel').value, postal: $('pPostal').value, address: $('pAddr').value,
           emg_name: $('pEmgName').value, emg_relation: $('pEmgRel').value,
-          emg_tel: $('pEmgTel').value, intro: $('pIntro').value,
+          emg_tel: $('pEmgTel').value,
           photo_public: $('pHide').checked ? 'no' : ''
         });
         DIR = null;                      // 名簿を作り直させる
         toast('保存しました');
+      } catch (err) { toast(err.message, 'err'); }
+    };
+    if ($('iSave')) $('iSave').onclick = async () => {
+      const body = {};
+      $('introFields').querySelectorAll('[data-q]').forEach(el => { body[el.dataset.q] = el.value; });
+      try {
+        await API.call('profile.save', body);
+        DIR = null;                    // 名簿を作り直させる
+        toast('ありがとうございます。保存しました');
+        renderMyPage();
       } catch (err) { toast(err.message, 'err'); }
     };
     $('qAdd').onclick = () => openQualForm(opt.quals);
@@ -2773,4 +2790,62 @@ function openQualForm(presets) {
       closeSheet(); toast('登録しました'); openMyPageSheet();
     } catch (e) { toast(e.message, 'err'); }
   };
+}
+
+/* ---- どんな方かを、いちばん先に出す ---- */
+
+/**
+ * カルテを開くと、これまでは入社日や電話番号から始まっていた。
+ * 会ったことのない方だと、それでは人が見えてこない。
+ * 名簿にあることと、ご本人が書いたことを、先にひとまとめで出す。
+ */
+function summaryCard(sm) {
+  if (!sm) return '';
+  const facts = (sm.lines || []).map(esc).join('　／　');
+  if (!facts && !sm.written) return '';
+  return `
+    <div class="card" style="background:var(--accent-soft); border-color:var(--accent-soft); margin-bottom:12px;">
+      ${facts ? `<div style="font-size:13px;">${facts}</div>` : ''}
+      ${sm.intro ? `<p style="margin:8px 0 0; white-space:pre-wrap;">${esc(sm.intro)}</p>` : ''}
+      ${(sm.own || []).length ? `<div style="margin-top:10px;">${sm.own.map(o => `
+        <div style="margin-top:6px;">
+          <span class="muted" style="font-size:11px;">${esc(o.label)}</span>
+          <div style="white-space:pre-wrap;">${esc(o.text)}</div>
+        </div>`).join('')}</div>` : ''}
+      ${!sm.written ? `<p class="muted" style="margin:6px 0 0;">
+        自己紹介はまだ書かれていません。</p>` : ''}
+    </div>`;
+}
+
+/* ---- 自己紹介を書く ---- */
+
+/**
+ * 質問はサーバから受け取る（文言を1か所で直せるように）。
+ * ぜんぶ任意。書かないことを責めない言い方にしている。
+ */
+function introFormCard(questions, p) {
+  if (!questions.length) return '';
+  const written = questions.some(q => String(p[q.key] || '').trim());
+  return `
+    <div class="card ${written ? '' : 'first-task'}">
+      <b>自己紹介</b>
+      <p class="muted" style="margin:4px 0 10px;">
+        ${written
+          ? '社員名簿を開いた方に出ます。いつでも書き直せます。'
+          : 'はじめまして。あなたのことを、すこし教えてください。'}<br>
+        <b>ぜんぶ書かなくて大丈夫です。</b>書きたいところだけで結構です。</p>
+      <div id="introFields">
+        ${questions.map(q => `
+          <label class="field"><span>${esc(q.label)}</span>
+            ${q.type === 'textarea'
+              ? `<textarea data-q="${esc(q.key)}" rows="2"
+                   placeholder="${esc(q.placeholder || '')}">${esc(p[q.key] || '')}</textarea>`
+              : `<input type="text" data-q="${esc(q.key)}"
+                   value="${esc(p[q.key] || '')}" placeholder="${esc(q.placeholder || '')}">`}
+          </label>
+          ${q.help ? `<p class="muted" style="margin:-8px 0 10px; font-size:12px;">${esc(q.help)}</p>` : ''}
+        `).join('')}
+      </div>
+      <button class="btn primary block" id="iSave">保存する</button>
+    </div>`;
 }
