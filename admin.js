@@ -625,6 +625,7 @@ async function renderEmps() {
           <button class="btn sm primary" id="empInvite">入社前の方を招く</button>
           <button class="btn sm" id="empImport">カオナビから取り込む</button>
           <button class="btn sm ghost" id="empViewer">社外の方に見せる</button>
+          <button class="btn sm ghost" id="empRefresh">シートとマスタを整える</button>
         </div>
       </div>
 
@@ -701,6 +702,21 @@ async function renderEmps() {
     $('empImport').onclick = openEmployeeImport;
     $('empInvite').onclick = () => openInviteForm(d.app_url || '');
     $('empViewer').onclick = openViewerList;
+    $('empRefresh').onclick = async () => {
+      if (!confirm('シートの用意と、書類・緊急連絡先の入れ直しをします。\n'
+        + 'すでにあるものは触りません。何度押しても大丈夫です。よろしいですか？')) return;
+      const b = $('empRefresh'); b.disabled = true; b.textContent = '実行中…';
+      try {
+        const r = await API.call('admin.setup.refresh');
+        openSheet(`
+          <div class="sheet-title"><h2>整えました</h2>
+            <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+          <div class="card"><p style="white-space:pre-wrap;">${esc(r.log.join('\n'))}</p></div>
+          <p class="muted">機能を足したあとに押していただくと、
+            新しいシートや書類の種類が入ります。</p>`);
+      } catch (e) { toast(e.message, 'err'); }
+      finally { b.disabled = false; b.textContent = 'シートとマスタを整える'; }
+    };
     v.querySelectorAll('[data-reinv]').forEach(b => b.onclick = async () => {
       const e = d.employees.find(x => x.code === b.dataset.reinv);
       if (!confirm(`${e.name} さんに、ご案内メールをもう一度送ります。よろしいですか？`)) return;
