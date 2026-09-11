@@ -493,3 +493,27 @@ table.grid tr:hover td { background: var(--accent-soft); }
   margin-bottom: 16px;
   font-weight: 700;
 }
+
+/* ---- 社員名簿（顔写真） ---- */
+.face {
+  width: 56px; height: 56px; border-radius: 50%; flex: none;
+  background: var(--accent-soft); background-size: cover; background-position: center;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 20px; color: var(--accent);
+}
+.face.has-photo { background-color: transparent; }
+.face.lg { width: 84px; height: 84px; font-size: 30px; }
+.face.sm { width: 34px; height: 34px; font-size: 14px; }
+
+.people { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; }
+.person {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 8px; text-align: center; cursor: pointer;
+}
+.person:active { background: var(--accent-soft); }
+.person .face { margin: 0 auto 8px; }
+.person b { display: block; font-size: 14px; }
+.person span { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.office-head {
+  margin: 16px 0 8px; font-size: 13px; font-weight: 700; color: var(--muted);
+}

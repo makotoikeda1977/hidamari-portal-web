@@ -147,3 +147,35 @@ async function openStoredFile(kind, id) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
+
+/* ---- 顔写真。名簿で何度も出てくるので、いちど読んだら覚えておく ---- */
+const FACE_CACHE = {};
+async function faceUrl(code) {
+  const key = String(code);
+  if (FACE_CACHE[key] !== undefined) return FACE_CACHE[key];
+  try {
+    const f = await API.call('file.get', { kind: 'face', id: key });
+    FACE_CACHE[key] = `data:${f.mime};base64,${f.data}`;
+  } catch (e) {
+    FACE_CACHE[key] = null;    // 無い人を何度も取りに行かない
+  }
+  return FACE_CACHE[key];
+}
+
+/** 写真がまだ無い方は、お名前の頭文字を出す */
+const initial = (name) => String(name || '').replace(/[\s　]/g, '').slice(0, 1) || '？';
+
+/**
+ * 名簿の顔写真を、描き終わってから順に入れていく。
+ * まとめて取りに行くと、1枚ずつDriveから読むぶん画面が固まってしまう。
+ */
+async function fillFaces(root) {
+  const targets = Array.from((root || document).querySelectorAll('[data-face]'));
+  for (const el of targets) {
+    const url = await faceUrl(el.dataset.face);
+    if (!url || !el.isConnected) continue;
+    el.style.backgroundImage = `url(${url})`;
+    el.classList.add('has-photo');
+    el.textContent = '';
+  }
+}

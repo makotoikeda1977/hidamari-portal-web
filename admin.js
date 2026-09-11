@@ -68,6 +68,7 @@ function render(v) {
      emps: renderEmps, offices: renderOffices, kaonavi: renderKaonavi,
      treat: renderTreatments, drive: renderDrives, incident: renderIncidents,
      contract: renderContracts, pledge: renderPledge, assets: renderAssets,
+     dir: renderDirectory, quals: renderQuals, trainings: renderTrainings,
      notice: renderNotice, audit: renderAudit })[v]();
 }
 
@@ -78,7 +79,8 @@ function render(v) {
 function hideActionsForViewer() {
   if (!A.viewer) return;
   const KEEP = ['明細', '中身を見る', '人ごとに見る', '閉じる', 'もどる',
-                'ダウンロード', 'CSV', '表をコピー', 'ログアウト', 'すべて'];
+                'ダウンロード', 'CSV', '表をコピー', 'ログアウト', 'すべて',
+                'カルテ', 'ぜんぶ'];
   document.querySelectorAll('.admin-main button, #sheet button').forEach(b => {
     if (b.dataset.viewerChecked) return;
     b.dataset.viewerChecked = '1';
@@ -2939,4 +2941,392 @@ async function renderPledge() {
       } catch (e) { toast(e.message, 'err'); }
     };
   } catch (e) { v.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
+}
+
+/* ============================ 社員名簿（顔写真つき） ============================ */
+
+let ADIR = null, ADIR_OFFICE = '', ADIR_Q = '';
+
+async function renderDirectory() {
+  const v = $('v-dir');
+  v.innerHTML = '<div class="loading">読み込み中…</div>';
+  try {
+    ADIR = ADIR || await API.call('staff.directory');
+    drawDirectory();
+  } catch (e) { v.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
+}
+
+function drawDirectory() {
+  const v = $('v-dir');
+  const list = ADIR.staff.filter(x =>
+    (!ADIR_OFFICE || x.office === ADIR_OFFICE) &&
+    (!ADIR_Q || [x.name, x.kana, x.job_title, x.office, x.code].join(' ').indexOf(ADIR_Q) >= 0));
+
+  const groups = [];
+  list.forEach(x => {
+    const g = groups[groups.length - 1];
+    if (g && g.office === x.office) g.items.push(x);
+    else groups.push({ office: x.office, items: [x] });
+  });
+
+  v.innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><b>${ADIR.staff.length}</b><span>在籍</span></div>
+      <div class="kpi ${ADIR.photos < ADIR.staff.length ? 'alert' : ''}">
+        <b>${ADIR.staff.length - ADIR.photos}</b><span>顔写真がまだ</span></div>
+      <div class="kpi"><b>${ADIR.offices.length}</b><span>事業所</span></div>
+    </div>
+    <div class="card-head"><h2>社員名簿</h2>
+      <input type="search" id="adirQ" value="${esc(ADIR_Q)}"
+        placeholder="なまえ・職名・社員番号" style="width:240px;"></div>
+    <div class="chip-row" style="margin-bottom:12px;">
+      <button class="chip ${ADIR_OFFICE ? '' : 'on'}" data-o="">ぜんぶ</button>
+      ${ADIR.offices.map(o => `<button class="chip ${ADIR_OFFICE === o ? 'on' : ''}"
+        data-o="${esc(o)}">${esc(o)}</button>`).join('')}
+    </div>
+    ${groups.map(g => `
+      <div class="office-head">${esc(g.office || '（事業所なし）')}　${g.items.length}名</div>
+      <div class="people">${g.items.map(x => `
+        <div class="person" data-code="${esc(x.code)}">
+          <div class="face" ${x.photo_id ? `data-face="${esc(x.photo_id)}"` : ''}>${esc(initial(x.name))}</div>
+          <b>${esc(x.name)}</b>
+          <span>${esc(x.job_title || x.employment || '')}</span>
+          <span>${esc(x.code)}</span>
+        </div>`).join('')}</div>`).join('')}
+    <p class="muted" style="margin-top:14px;">
+      顔写真は、入社のときに出してもらう「顔写真」をそのまま使っています。
+      まだの方には「書類の提出」からお願いしてください。</p>`;
+
+  $('adirQ').oninput = () => { ADIR_Q = $('adirQ').value; drawDirectory(); $('adirQ').focus(); };
+  v.querySelectorAll('[data-o]').forEach(b => b.onclick = () => { ADIR_OFFICE = b.dataset.o; drawDirectory(); });
+  v.querySelectorAll('[data-code]').forEach(b => b.onclick = () => openStaffCard(b.dataset.code));
+  fillFaces(v);
+  hideActionsForViewer();
+}
+
+/* ---- 1人ぶんのカルテ ---- */
+
+async function openStaffCard(code) {
+  openSheet(`
+    <div class="sheet-title"><h2>社員カルテ</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <div id="cardBody"><div class="loading">読み込み中…</div></div>`);
+  await drawStaffCard(code);
+}
+
+async function drawStaffCard(code) {
+  const v = $('cardBody');
+  if (!v) return;
+  try {
+    const [d, opt] = await Promise.all([
+      API.call('staff.card', { code }), API.call('staff.options')]);
+    const e = d.employee, p = d.profile;
+    v.innerHTML = `
+      <div style="display:flex; gap:16px; align-items:center; margin-bottom:14px;">
+        <div class="face lg" ${d.photo_id ? `data-face="${esc(d.photo_id)}"` : ''}>${esc(initial(e.name))}</div>
+        <div>
+          <div style="font-size:22px; font-weight:700;">${esc(e.name)}</div>
+          <div class="muted">${esc(e.kana || '')}　${esc(e.code)}</div>
+          <div class="muted" style="margin-top:4px;">
+            ${esc(e.company || '')}　${esc(e.office || '')}　${esc(e.employment || '')}</div>
+        </div>
+      </div>
+
+      <div class="cols">
+        <div class="card">
+          <b>基本</b>
+          <table class="grid" style="margin-top:6px;"><tbody>
+            ${cardRow('入社日', e.join_date ? fmtYmd(e.join_date) : '—')}
+            ${cardRow('生年月日', e.birthday ? fmtYmd(e.birthday) : '—')}
+            ${cardRow('在籍', e.status || '—')}
+            ${cardRow('メール', e.email || '—')}
+            ${cardRow('所定', e.shift_start ? `${e.shift_start} 〜 ${e.shift_end}` : '事業所の標準')}
+          </tbody></table>
+        </div>
+        <div class="card">
+          <b>職名・連絡先</b>
+          <label class="field"><span>職名</span>
+            <select id="cJob"><option value=""></option>
+              ${opt.job_titles.map(t => `<option ${p.job_title === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+            </select></label>
+          <label class="field"><span>担当（任意）</span>
+            <input type="text" id="cDept" value="${esc(p.department || '')}"></label>
+          <label class="field"><span>電話</span>
+            <input type="tel" id="cTel" value="${esc(p.tel || '')}"></label>
+          <label class="field"><span>住所</span>
+            <input type="text" id="cAddr" value="${esc(p.address || '')}"></label>
+          <label class="field"><span>緊急連絡先</span>
+            <input type="text" id="cEmg" value="${esc(p.emg_name || '')}"
+              placeholder="お名前"></label>
+          <div class="cols">
+            <label class="field"><span>続柄</span>
+              <input type="text" id="cEmgRel" value="${esc(p.emg_relation || '')}"></label>
+            <label class="field"><span>電話</span>
+              <input type="tel" id="cEmgTel" value="${esc(p.emg_tel || '')}"></label>
+          </div>
+          <button class="btn primary block" id="cSave">保存する</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <div class="card-head"><b>資格・免許</b>
+          <button class="btn sm" id="cQualAdd">資格を足す</button></div>
+        ${d.quals.length ? `<table class="grid"><thead><tr>
+            <th>資格</th><th>番号</th><th>取得</th><th>有効期限</th><th>状態</th><th></th></tr></thead>
+          <tbody>${d.quals.map(q => `<tr>
+            <td>${esc(q.name)}</td><td>${esc(q.number || '')}</td>
+            <td>${q.acquired_on ? fmtYmd(q.acquired_on) : ''}</td>
+            <td>${q.expire_on ? fmtYmd(q.expire_on) : '—'}</td>
+            <td>${qualBadge(q)}</td>
+            <td>${q.file_url ? `<button class="btn sm ghost" data-qfile="${esc(q.id)}">中身を見る</button>` : ''}</td>
+          </tr>`).join('')}</tbody></table>`
+          : '<p class="muted" style="margin:6px 0 0;">まだ登録がありません。</p>'}
+      </div>
+
+      <div class="cols" style="margin-top:14px;">
+        <div class="card"><b>有給</b>
+          ${d.leave.no_grant
+            ? '<p class="muted" style="margin:6px 0 0;">付与がまだ入っていません。</p>'
+            : `<p style="margin:6px 0 0; font-size:20px; font-weight:700;">${d.leave.remain}日</p>
+               <p class="muted" style="margin:2px 0 0;">
+                 ${d.leave.next_expire
+                   ? `${fmtYmd(d.leave.next_expire)}までに ${d.leave.next_expire_days}日`
+                   : '期限は未確定'}</p>`}
+        </div>
+        <div class="card"><b>貸している物</b>
+          ${d.assets.length ? `<ul style="margin:6px 0 0; padding-left:18px;">${d.assets.map(a => `
+            <li>${esc(a.kind)}　${esc(a.name)}${a.confirmed ? '' : '<span class="badge warn">受取未確認</span>'}</li>`).join('')}</ul>`
+            : '<p class="muted" style="margin:6px 0 0;">ありません。</p>'}
+        </div>
+        <div class="card"><b>雇用契約</b>
+          ${d.contracts.length ? `<ul style="margin:6px 0 0; padding-left:18px;">${d.contracts.map(c => `
+            <li>${esc(c.company)}　${esc(c.kind)}　${c.end_date ? fmtYmd(c.end_date) + ' まで' : '期間の定めなし'}</li>`).join('')}</ul>`
+            : '<p class="muted" style="margin:6px 0 0;">登録がありません。</p>'}
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <b>提出書類</b>
+        ${d.docs.length ? `<table class="grid" style="margin-top:6px;"><thead><tr>
+            <th>書類</th><th>状態</th><th>提出日</th><th></th></tr></thead>
+          <tbody>${d.docs.map(x => `<tr>
+            <td>${esc(x.label)}</td><td>${esc(x.status)}</td>
+            <td>${x.uploaded_at ? fmtDateTime(x.uploaded_at) : ''}</td>
+            <td>${x.can_open ? `<button class="btn sm ghost" data-doc="${esc(x.id)}">中身を見る</button>` : ''}</td>
+          </tr>`).join('')}</tbody></table>`
+          : '<p class="muted" style="margin:6px 0 0;">まだありません。</p>'}
+      </div>`;
+
+    fillFaces(v);
+    $('cSave').onclick = async () => {
+      try {
+        await API.call('admin.profile.save', { code,
+          job_title: $('cJob').value, department: $('cDept').value,
+          tel: $('cTel').value, address: $('cAddr').value,
+          emg_name: $('cEmg').value, emg_relation: $('cEmgRel').value,
+          emg_tel: $('cEmgTel').value });
+        ADIR = null; toast('保存しました');
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    $('cQualAdd').onclick = () => openAdminQualForm(code, e.name, opt.quals);
+    v.querySelectorAll('[data-qfile]').forEach(b =>
+      b.onclick = () => openStoredFile('qual', b.dataset.qfile).catch(e => toast(e.message, 'err')));
+    v.querySelectorAll('[data-doc]').forEach(b =>
+      b.onclick = () => openStoredFile('document', b.dataset.doc).catch(e => toast(e.message, 'err')));
+    hideActionsForViewer();
+  } catch (e) { v.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+}
+
+const cardRow = (k, val) => `<tr><td class="muted">${esc(k)}</td><td>${esc(val)}</td></tr>`;
+
+function qualBadge(q) {
+  if (q.state === 'expired') return '<span class="badge warn">期限切れ</span>';
+  if (q.state === 'soon') return `<span class="badge warn">あと${q.days_left}日</span>`;
+  return '<span class="badge ok">有効</span>';
+}
+
+function openAdminQualForm(code, name, presets) {
+  openSheet(`
+    <div class="sheet-title"><h2>${esc(name)} さんの資格</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <label class="field"><span>資格の名前</span>
+      <select id="aqName">${presets.map(x => `<option>${esc(x.name)}</option>`).join('')}</select></label>
+    <label class="field" id="aqOtherWrap" style="display:none;"><span>資格の名前（自由入力）</span>
+      <input type="text" id="aqOther"></label>
+    <p class="muted" id="aqHelp"></p>
+    <div class="cols">
+      <label class="field"><span>取得日</span><input type="date" id="aqGot"></label>
+      <label class="field"><span>有効期限（あれば）</span><input type="date" id="aqExp"></label>
+      <label class="field"><span>登録番号</span><input type="text" id="aqNum"></label>
+    </div>
+    <button class="btn primary block" id="aqSave">登録する</button>`);
+
+  const sync = () => {
+    const t = presets.find(x => x.name === $('aqName').value) || {};
+    $('aqHelp').textContent = t.help || '';
+    $('aqOtherWrap').style.display = $('aqName').value === 'その他' ? '' : 'none';
+  };
+  $('aqName').onchange = sync; sync();
+  $('aqSave').onclick = async () => {
+    const qname = $('aqName').value === 'その他' ? $('aqOther').value.trim() : $('aqName').value;
+    if (!qname) return toast('資格の名前を入れてください', 'err');
+    try {
+      await API.call('admin.qual.add', { code, name: qname, number: $('aqNum').value,
+        acquired_on: $('aqGot').value, expire_on: $('aqExp').value });
+      closeSheet(); toast('登録しました'); openStaffCard(code);
+    } catch (e) { toast(e.message, 'err'); }
+  };
+}
+
+/* ============================ 資格・免許の一覧 ============================ */
+
+async function renderQuals() {
+  const v = $('v-quals');
+  v.innerHTML = '<div class="loading">読み込み中…</div>';
+  try {
+    const d = await API.call('admin.quals');
+    setCount('cQual', d.expired + d.soon);
+    v.innerHTML = `
+      <div class="kpis">
+        <div class="kpi ${d.expired ? 'alert' : ''}"><b>${d.expired}</b><span>期限切れ</span></div>
+        <div class="kpi ${d.soon ? 'alert' : ''}"><b>${d.soon}</b><span>${d.warn_days}日以内に期限</span></div>
+        <div class="kpi"><b>${d.rows.length}</b><span>登録ずみ</span></div>
+        <div class="kpi ${d.none ? 'alert' : ''}"><b>${d.none}</b><span>1件も登録がない方</span></div>
+      </div>
+      <div class="card-head"><h2>資格・免許</h2>
+        <button class="btn sm" id="qCopy">表をコピー</button></div>
+      <div class="table-wrap"><table class="grid">
+        <thead><tr><th>氏名</th><th>事業所</th><th>資格</th><th>番号</th>
+          <th>取得</th><th>有効期限</th><th>状態</th><th></th></tr></thead>
+        <tbody>${d.rows.map(r => `<tr>
+          <td>${esc(r.name)}</td><td>${esc(r.office)}</td><td>${esc(r.qual)}</td>
+          <td>${esc(r.number || '')}</td>
+          <td>${r.acquired_on ? fmtYmd(r.acquired_on) : ''}</td>
+          <td>${r.expire_on ? fmtYmd(r.expire_on) : '—'}</td>
+          <td>${qualBadge(r)}</td>
+          <td><button class="btn sm ghost" data-card="${esc(r.code)}">カルテ</button></td>
+        </tr>`).join('')}</tbody></table></div>
+      <p class="muted" style="margin-top:12px;">
+        期限のあるものだけを数えています。看護師免許のように期限のないものは「—」です。
+        児発管の更新研修・相談支援専門員の現任研修・運転免許は、切れると業務ができなくなるため、
+        ${d.warn_days}日前からお知らせします。</p>`;
+
+    v.querySelectorAll('[data-card]').forEach(b => b.onclick = () => openStaffCard(b.dataset.card));
+    $('qCopy').onclick = () => {
+      const text = ['氏名\t事業所\t資格\t番号\t取得\t有効期限\t状態'].concat(
+        d.rows.map(r => [r.name, r.office, r.qual, r.number || '', r.acquired_on || '',
+                         r.expire_on || '', r.state_label].join('\t'))).join('\n');
+      navigator.clipboard.writeText(text).then(() => toast('コピーしました'));
+    };
+    hideActionsForViewer();
+  } catch (e) { v.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
+}
+
+/* ============================ 法定研修 ============================ */
+
+let TR_OFFICE = '', TR_FY = 0;
+
+async function renderTrainings() {
+  const v = $('v-trainings');
+  v.innerHTML = '<div class="loading">読み込み中…</div>';
+  try {
+    const d = await API.call('admin.trainings',
+      Object.assign({ office: TR_OFFICE }, TR_FY ? { fy: TR_FY } : {}));
+    TR_FY = d.fy;
+    const notYet = d.rows.length - d.complete;
+    setCount('cTrain', notYet);
+    v.innerHTML = `
+      <div class="kpis">
+        <div class="kpi"><b>${d.rows.length}</b><span>対象者</span></div>
+        <div class="kpi"><b>${d.complete}</b><span>ぜんぶ受けた</span></div>
+        <div class="kpi ${notYet ? 'alert' : ''}"><b>${notYet}</b><span>まだの方</span></div>
+        <div class="kpi ${d.none ? 'alert' : ''}"><b>${d.none}</b><span>ひとつも受けていない</span></div>
+      </div>
+      <div class="card-head">
+        <h2>${d.fy}年度の法定研修</h2>
+        <div style="display:flex; gap:8px;">
+          <select id="trFy">${[d.fy + 1, d.fy, d.fy - 1, d.fy - 2].map(y =>
+            `<option value="${y}" ${y === d.fy ? 'selected' : ''}>${y}年度</option>`).join('')}</select>
+          <button class="btn sm primary" id="trAdd">研修の記録を入れる</button>
+        </div>
+      </div>
+      <div class="chip-row" style="margin-bottom:12px;">
+        <button class="chip ${TR_OFFICE ? '' : 'on'}" data-o="">ぜんぶ</button>
+        ${d.offices.map(o => `<button class="chip ${TR_OFFICE === o ? 'on' : ''}"
+          data-o="${esc(o)}">${esc(o)}</button>`).join('')}
+      </div>
+      <div class="table-wrap"><table class="grid">
+        <thead><tr><th>氏名</th><th>事業所</th>
+          ${d.types.map(t => `<th style="writing-mode:vertical-rl; height:120px;">${esc(t.name)}</th>`).join('')}
+        </tr></thead>
+        <tbody>${d.rows.map(r => `<tr>
+          <td>${esc(r.name)}</td><td>${esc(r.office)}</td>
+          ${r.cells.map(c => `<td style="text-align:center;">${
+            c.ok ? `<span class="badge ok" title="${esc(c.last)}">済</span>`
+                 : (c.done ? `<span class="badge warn">${c.done}/${c.need}</span>`
+                           : '<span class="badge warn">未</span>')}</td>`).join('')}
+        </tr>`).join('')}</tbody></table></div>
+      <p class="muted" style="margin-top:12px;">
+        虐待の防止・身体拘束等の適正化・感染症・BCP の研修は、運営基準で
+        <b>全職員が年1回以上</b>（感染症は年2回以上）受けることになっています。
+        実地指導では、この表がそのまま受講記録になります。
+        ${d.range.from.slice(0, 4)}年4月1日〜${d.range.to.slice(0, 4)}年3月31日の分を数えています。</p>`;
+
+    $('trFy').onchange = () => { TR_FY = Number($('trFy').value); renderTrainings(); };
+    v.querySelectorAll('[data-o]').forEach(b => b.onclick = () => { TR_OFFICE = b.dataset.o; renderTrainings(); });
+    $('trAdd').onclick = () => openTrainingForm(d);
+    hideActionsForViewer();
+  } catch (e) { v.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
+}
+
+/**
+ * 研修は事業所で集合してやるので、出席者をまとめて入れる形にしている。
+ * 1人ずつ入れる形だと入力が続かず、結局だれも記録しなくなるため。
+ */
+function openTrainingForm(d) {
+  const today = new Date().toISOString().slice(0, 10);
+  openSheet(`
+    <div class="sheet-title"><h2>研修の記録を入れる</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <div class="cols">
+      <label class="field"><span>研修</span>
+        <select id="tName">${d.types.map(t => `<option>${esc(t.name)}</option>`).join('')}
+          <option>そのほかの研修</option></select></label>
+      <label class="field"><span>実施日</span>
+        <input type="date" id="tDate" value="${today}" max="${today}"></label>
+      <label class="field"><span>講師・資料（任意）</span>
+        <input type="text" id="tTrainer" placeholder="外部講師名・使った資料など"></label>
+    </div>
+    <label class="field"><span>メモ（任意）</span>
+      <input type="text" id="tNote" placeholder="内容の要点・気づいたこと"></label>
+    <div class="card-head" style="margin-top:6px;"><b>受けた方</b>
+      <div style="display:flex; gap:8px;">
+        <button class="btn sm ghost" id="tAll">この事業所ぜんぶ</button>
+        <button class="btn sm ghost" id="tNone">えらび直す</button></div></div>
+    <div class="chip-row" id="tPeople" style="max-height:260px; overflow:auto;">
+      ${d.rows.map(r => `<button class="chip" data-p="${esc(r.code)}">${esc(r.name)}</button>`).join('')}
+    </div>
+    <button class="btn primary block" style="margin-top:14px;" id="tSave">記録する</button>`);
+
+  const sel = new Set();
+  const paint = () => $('tPeople').querySelectorAll('[data-p]').forEach(b =>
+    b.classList.toggle('on', sel.has(b.dataset.p)));
+  $('tPeople').querySelectorAll('[data-p]').forEach(b => b.onclick = () => {
+    sel.has(b.dataset.p) ? sel.delete(b.dataset.p) : sel.add(b.dataset.p); paint();
+  });
+  $('tAll').onclick = () => { d.rows.forEach(r => sel.add(r.code)); paint(); };
+  $('tNone').onclick = () => { sel.clear(); paint(); };
+
+  $('tSave').onclick = async () => {
+    if (!sel.size) return toast('受けた方を選んでください', 'err');
+    try {
+      const r = await API.call('admin.training.add', {
+        name: $('tName').value, held_on: $('tDate').value,
+        trainer: $('tTrainer').value, note: $('tNote').value,
+        codes: Array.from(sel) });
+      closeSheet();
+      toast(`${r.added}名ぶん記録しました` + (r.skipped.length ? `（${r.skipped.length}名は登録ずみ）` : ''));
+      renderTrainings();
+    } catch (e) { toast(e.message, 'err'); }
+  };
 }
