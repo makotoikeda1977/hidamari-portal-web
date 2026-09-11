@@ -4,18 +4,10 @@
  * 給与計算に要るものだけを1枚に並べる。読むだけで、書き換える経路は置かない。
  */
 
+// esc・toast・fmtDate などの小物は api.js が持っている（ここで作り直さない）
 const S = {};
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s === undefined || s === null ? '' : s)
-  .replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;',
-    '"': '&quot;', "'": '&#39;' }[c]));
 
-function toast(msg, kind) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.className = 'toast show' + (kind === 'err' ? ' err' : '');
-  setTimeout(() => { t.className = 'toast'; }, 3500);
-}
 function openSheet(html) {
   $('sheet').innerHTML = html;
   $('sheetBg').classList.add('open');
