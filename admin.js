@@ -3275,11 +3275,19 @@ function openFaceImport() {
       フォルダごと選べます。名簿にない番号と、名字が名簿と違うものは入れずにお知らせします。</p>
     <label class="field"><span>写真をえらぶ</span>
       <input type="file" id="fFiles" multiple accept="image/jpeg,image/png,image/heic"></label>
-    <label style="display:flex; align-items:center; gap:10px; margin:4px 0 12px;">
+    <label style="display:flex; align-items:center; gap:10px; margin:4px 0 4px;">
       <input type="checkbox" id="fReplace" style="width:auto;">
       <span>すでに顔写真がある方も入れ替える</span></label>
+    <label style="display:flex; align-items:flex-start; gap:10px; margin:0 0 12px;">
+      <input type="checkbox" id="fForce" style="width:auto; margin-top:3px;">
+      <span>名字が名簿と違っても取り込む<br>
+        <span class="muted" style="font-size:12px;">
+          結婚などで姓が変わった方のためのものです。まず下見で中身をご確認ください。</span></span></label>
     <div id="fPreview"></div>
-    <button class="btn primary block" id="fGo" disabled>取り込む</button>
+    <div style="display:flex; gap:8px;">
+      <button class="btn block" id="fDry" disabled>まず下見する</button>
+      <button class="btn primary block" id="fGo" disabled>取り込む</button>
+    </div>
     <div id="fLog" class="muted" style="margin-top:12px; white-space:pre-wrap;"></div>`);
 
   let picked = [];
@@ -3293,45 +3301,53 @@ function openFaceImport() {
         picked.filter(x => !x.code && x.name_hint).map(x => esc(x.name_hint)).join('、')}</p>` : ''}
       ${bad.length ? `<p class="muted">読めないので入れません：${
         bad.slice(0, 10).map(x => esc(x.file.name)).join('、')}${bad.length > 10 ? ' ほか' : ''}</p>` : ''}`;
-    $('fGo').disabled = picked.length === bad.length;
+    $('fGo').disabled = $('fDry').disabled = picked.length === bad.length;
   };
 
-  $('fGo').onclick = async () => {
+  const run = async (dry) => {
     const list = picked.filter(x => x.code || x.name_hint);
-    const replace = $('fReplace').checked;
-    $('fGo').disabled = true;
+    const replace = $('fReplace').checked, force = $('fForce').checked;
+    $('fGo').disabled = $('fDry').disabled = true;
     const log = $('fLog');
-    const total = { added: 0, replaced: 0, skipped: [], unknown: [], mismatch: [] };
+    const total = { added: 0, replaced: 0, ready: [], skipped: [], unknown: [], mismatch: [] };
 
     for (let i = 0; i < list.length; i += 8) {
       const chunk = list.slice(i, i + 8);
-      log.textContent = `送っています… ${i} / ${list.length}`;
+      log.textContent = `${dry ? '調べています' : '送っています'}… ${i} / ${list.length}`;
       try {
         const items = await Promise.all(chunk.map(async x => ({
           code: x.code, name_hint: x.name_hint, file_name: x.file.name,
           mime: x.file.type || 'image/jpeg', data: await fileToBase64(x.file)
         })));
-        const r = await API.call('import.faces', { items, replace });
+        const r = await API.call('import.faces', { items, replace, force, dry_run: dry });
         total.added += r.added; total.replaced += r.replaced;
+        total.ready.push(...(r.ready || []));
         total.skipped.push(...r.skipped);
         total.unknown.push(...r.unknown);
         total.mismatch.push(...r.mismatch);
       } catch (e) {
         log.textContent = `途中で止まりました（${i}枚目あたり）：${e.message}`;
-        $('fGo').disabled = false;
+        $('fGo').disabled = $('fDry').disabled = false;
         return;
       }
     }
 
     log.textContent = [
-      `入りました：${total.added}枚` + (total.replaced ? `（うち入れ替え ${total.replaced}枚）` : ''),
-      total.skipped.length ? `すでに写真がある方（入れませんでした）：${total.skipped.join('、')}` : '',
+      dry ? `入る予定：${total.ready.length}枚`
+          : `入りました：${total.added}枚` + (total.replaced ? `（うち入れ替え ${total.replaced}枚）` : ''),
+      total.skipped.length ? `すでに写真がある方（入れません）：${total.skipped.join('、')}` : '',
       total.unknown.length ? `名簿にない番号：${total.unknown.join('、')}` : '',
-      total.mismatch.length ? `名字が名簿と違います（入れていません。ご確認ください）：\n　${total.mismatch.join('\n　')}` : ''
+      total.mismatch.length
+        ? `名字が名簿と違います（入れていません。結婚などで姓が変わった方かもしれません）：\n　${total.mismatch.join('\n　')}`
+        : ''
     ].filter(Boolean).join('\n\n');
-    toast(`${total.added}枚を入れました`);
-    ADIR = null; renderDirectory();
+
+    $('fGo').disabled = $('fDry').disabled = false;
+    if (!dry) { toast(`${total.added}枚を入れました`); ADIR = null; renderDirectory(); }
   };
+
+  $('fDry').onclick = () => run(true);
+  $('fGo').onclick = () => run(false);
 }
 
 /** ファイルを base64 に。data: の頭を落として中身だけ返す */
