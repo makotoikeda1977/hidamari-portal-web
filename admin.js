@@ -67,6 +67,7 @@ function render(v) {
   ({ dash: renderDash, leaves: renderLeaves, corr: renderCorrections, dev: renderDev,
      leave: renderLeave,
      chat: renderChat, apply: renderApplications, exp: renderExpenses, docs: renderDocs,
+     reimburse: renderReimbursements,
      emps: renderEmps, offices: renderOffices, kaonavi: renderKaonavi,
      treat: renderTreatments, drive: renderDrives, incident: renderIncidents,
      contract: renderContracts, pledge: renderPledge, assets: renderAssets,
@@ -206,6 +207,7 @@ function setCount(id, n) {
  * 「なにが溜まっているか」は必ず分かるようにしておく。
  */
 function setSideCounts(c) {
+  setCount('cRb', c.pending_reimburse || 0);
   setCount('cLeave', (c.pending_leave || 0) + (c.pending_overtime || 0));
   setCount('cChat', c.unread_chat || 0);
   setCount('cDocs', c.docs_pending || 0);
@@ -1907,7 +1909,7 @@ async function renderDrives() {
 
     v.innerHTML = `
       <div class="btn-row" style="margin-bottom:16px; justify-content:flex-start;">
-        ${sub('logs', '運行の記録')}${sub('cars', '車の登録')}${sub('contacts', '緊急連絡先')}
+        ${sub('logs', '運行の記録')}${sub('trips', '遠出の申請')}${sub('cars', '車の登録')}${sub('contacts', '緊急連絡先')}
       </div>
       <div id="driveBody"></div>`;
 
@@ -1967,6 +1969,41 @@ async function renderDrives() {
           URL.revokeObjectURL(a.href);
         } catch (e) { toast(e.message, 'err'); }
       };
+    }
+
+    if (DRIVE_TAB === 'trips') {
+      const t = await API.call('admin.trips');
+      const row = r => `<tr>
+        <td>${esc(r.date_from.slice(5))}${r.date_to !== r.date_from ? '〜' + esc(r.date_to.slice(5)) : ''}</td>
+        <td>${esc(r.name)}<br><span class="muted">${esc(r.office || '')}</span></td>
+        <td>${esc(r.car_name)}${r.plate4 ? '<br><span class="badge">' + esc(r.plate4) + '</span>' : ''}</td>
+        <td>${esc(r.destination)}<br><span class="muted">${esc(r.purpose)}</span></td>
+        <td class="num">${esc(r.distance_km || '')}</td>
+        <td>${esc(r.passengers || '')}${r.fuel_card === 'yes' ? '<br><span class="badge warn">給油カード</span>' : ''}${r.note ? '<br><span class="muted">' + esc(r.note) + '</span>' : ''}</td>`;
+      body.innerHTML = `
+        <div class="card-head"><h2>承認待ち（${t.pending.length}件）</h2></div>
+        <p class="muted">休みの日に社用車で遠出したいという事前の申請です。承認・却下すると本人にメールで届きます。
+          却下するときは理由を書いてください。同じ車・同じ日の申請が重なっていたら、ここで調整します。</p>
+        ${t.pending.length ? `<div class="table-wrap"><table class="grid">
+          <thead><tr><th>日程</th><th>申請者</th><th>車</th><th>行き先／目的</th><th class="num">距離km</th><th>同乗・備考</th><th>判断</th></tr></thead>
+          <tbody>${t.pending.map(r => row(r) + `
+            <td style="min-width:220px;"><input class="input" data-tc="${esc(r.id)}" placeholder="ひとこと（却下なら理由）" style="width:100%; margin-bottom:6px;">
+              <div class="btn-row" style="justify-content:flex-start;"><button class="btn sm primary" data-td="承認" data-id="${esc(r.id)}">承認</button>
+              <button class="btn sm" data-td="却下" data-id="${esc(r.id)}" style="border-color:var(--danger); color:var(--danger);">却下</button></div></td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="empty-state">承認待ちの申請はありません</div>'}
+        <div class="card-head" style="margin-top:20px;"><h2>これまでの申請（3か月）</h2></div>
+        ${t.recent.length ? `<div class="table-wrap"><table class="grid">
+          <thead><tr><th>日程</th><th>申請者</th><th>車</th><th>行き先／目的</th><th class="num">距離km</th><th>同乗・備考</th><th>結果</th></tr></thead>
+          <tbody>${t.recent.map(r => row(r) + `<td><span class="badge ${r.status === '承認' ? 'ok' : r.status === '却下' ? 'warn' : ''}">${esc(r.status)}</span>${r.comment ? '<br><span class="muted">' + esc(r.comment) + '</span>' : ''}</td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="empty-state">申請はまだありません</div>'}`;
+      body.querySelectorAll('[data-td]').forEach(b => b.onclick = async () => {
+        const id = b.dataset.id, decision = b.dataset.td;
+        const comment = (body.querySelector(`[data-tc="${id}"]`) || {}).value || '';
+        if (decision === '却下' && !comment.trim()) { toast('却下の理由を書いてください', 'err'); return; }
+        if (!confirm(`この申請を「${decision}」にします。よろしいですか？`)) return;
+        try { await API.call('admin.trip.decide', { id, decision, comment }); toast(decision + 'しました'); renderDrives(); }
+        catch (e) { toast(e.message, 'err'); }
+      });
     }
 
     if (DRIVE_TAB === 'cars') {
@@ -2987,7 +3024,7 @@ function drawDirectory() {
   list.forEach(x => {
     const g = groups[groups.length - 1];
     if (g && g.office === x.office) g.items.push(x);
-    else groups.push({ office: x.office, items: [x] });
+    else groups.push({ office: x.office, company: x.company, items: [x] });
   });
 
   // 名簿から始まるので、溜まっている仕事への入口はここに1行だけ置く
@@ -3020,15 +3057,15 @@ function drawDirectory() {
     </div>
     ${CO_LEGEND}
     ${groups.map(g => `
-      <div class="office-head">${esc(g.office || '（事業所なし）')}　${g.items.length}名</div>
+      <div class="office-head">${esc(g.office || '（事業所なし）')}　${esc(g.company || '')}　${g.items.length}名</div>
       <div class="people">${g.items.map(x => `
-        <div class="person ${companyClass(x.company)}" data-code="${esc(x.code)}">
+        <button type="button" class="person ${companyClass(x.company)}" data-code="${esc(x.code)}">
           <div class="face" ${x.photo_id ? `data-face="${esc(x.photo_id)}"` : ''}>${esc(initial(x.name))}</div>
           <b>${esc(x.name)}</b>
           ${x.nickname ? `<span>${esc(x.nickname)}</span>` : ''}
           <span>${esc(x.job_title || x.employment || '')}</span>
-          <span>${esc(x.code)}${x.introduced ? '' : '　<span style="opacity:.6;">自己紹介まだ</span>'}</span>
-        </div>`).join('')}</div>`).join('')}
+          <span>${esc(x.code)}</span>
+        </button>`).join('')}</div>`).join('')}
     <p class="muted" style="margin-top:14px;">
       顔写真は、入社のときに出してもらう「顔写真」をそのまま使っています。
       まだの方には「書類の提出」からお願いしてください。</p>`;
@@ -3381,11 +3418,123 @@ function adminSummary(sm) {
     <div class="card" style="background:var(--accent-soft); border-color:var(--accent-soft);">
       ${facts ? `<div style="font-size:13px;">${facts}</div>` : ''}
       ${sm.intro ? `<p style="margin:8px 0 0; white-space:pre-wrap;">${esc(sm.intro)}</p>` : ''}
-      ${(sm.own || []).length ? `<div class="cols" style="margin-top:10px; gap:10px;">${sm.own.map(o => `
-        <div>
-          <span class="muted" style="font-size:11px;">${esc(o.label)}</span>
-          <div style="white-space:pre-wrap;">${esc(o.text)}</div>
-        </div>`).join('')}</div>` : ''}
+      ${(sm.own || []).length ? `
+        <div class="cols" style="margin-top:10px; gap:10px;">${sm.own.slice(0, 2).map(o => `
+          <div>
+            <span class="muted" style="font-size:12px;">${esc(o.label)}</span>
+            <div style="white-space:pre-wrap;">${esc(o.text)}</div>
+          </div>`).join('')}</div>
+        ${sm.own.length > 2 ? `<details style="margin-top:8px;">
+          <summary style="cursor:pointer; padding:6px 0;">自己紹介をもっと見る</summary>
+          <div class="cols" style="margin-top:8px; gap:10px;">${sm.own.slice(2).map(o => `
+            <div>
+              <span class="muted" style="font-size:12px;">${esc(o.label)}</span>
+              <div style="white-space:pre-wrap;">${esc(o.text)}</div>
+            </div>`).join('')}</div></details>` : ''}` : ''}
       ${!sm.written ? '<p class="muted" style="margin:6px 0 0;">自己紹介はまだ書かれていません。</p>' : ''}
     </div>`;
 }
+
+/* ============================ 立替の精算 ============================ */
+
+let RB_MONTH = '';
+
+async function renderReimbursements() {
+  const v = $('v-reimburse');
+  v.innerHTML = '<div class="loading">読み込み中…</div>';
+  try {
+    const d = await API.call('admin.reimbursements', { month: RB_MONTH });
+    setCount('cRb', d.pending);
+    v.innerHTML = `
+      <div class="kpis">
+        <div class="kpi ${d.pending ? 'alert' : ''}"><b>${d.pending}</b><span>承認待ち</span></div>
+        <div class="kpi"><b>${yen(d.pending_yen)}</b><span>承認待ちの金額</span></div>
+        <div class="kpi ${d.unpaid ? 'alert' : ''}"><b>${d.unpaid}</b><span>未払い</span></div>
+        <div class="kpi"><b>${yen(d.unpaid_yen)}</b><span>未払いの金額</span></div>
+      </div>
+      <div class="card-head">
+        <h2>立替の精算</h2>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="month" id="rbMonth" value="${esc(RB_MONTH)}">
+          <button class="btn sm ghost" id="rbAll">すべて</button>
+          <button class="btn sm" id="rbCsv">給与用CSV</button>
+          <button class="btn sm" id="rbPaid">払ったことにする</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table class="grid">
+        <thead><tr><th></th><th>立替日</th><th>氏名</th><th>事業所</th><th>種類</th>
+          <th class="num">金額</th><th>用途</th><th>状態</th><th>支払月</th><th></th></tr></thead>
+        <tbody>${d.rows.map(r => `<tr>
+          <td>${r.status === '承認' && !r.paid_month
+            ? `<input type="checkbox" class="rb-pick" value="${esc(r.id)}">` : ''}</td>
+          <td>${fmtYmd(r.date)}</td><td>${esc(r.name)}</td><td>${esc(r.office)}</td>
+          <td>${esc(r.category)}</td>
+          <td class="num" style="font-weight:700;">${yen(r.amount)}</td>
+          <td>${esc(r.purpose)}${r.payee ? '<br><span class="muted">' + esc(r.payee) + '</span>' : ''}</td>
+          <td><span class="badge ${r.status === '承認' ? 'ok' : r.status === '却下' ? 'warn' : ''}">${esc(r.status)}</span></td>
+          <td>${esc(r.paid_month || '')}</td>
+          <td style="white-space:nowrap;">
+            ${r.has_file ? `<button class="btn sm ghost" data-rbfile="${esc(r.id)}">領収書</button>` : ''}
+            ${r.status === '申請中'
+              ? `<button class="btn sm" data-rbok="${esc(r.id)}" data-amount="${r.amount}">承認</button>
+                 <button class="btn sm ghost" data-rbng="${esc(r.id)}">却下</button>` : ''}
+          </td>
+        </tr>`).join('')}</tbody></table></div>
+      <p class="muted" style="margin-top:12px;">
+        金額は承認のときに直せます（レシートの一部だけ会社負担のときなど）。<br>
+        <b>領収書の原本は、これまでどおり紙で受け取って保管してください。</b>
+        写真だけで原本の代わりにするには、電子帳簿保存法の決まり（訂正削除の記録など）を
+        満たす必要があります。いまの作りは確認と控えのためのものです。</p>`;
+
+    $('rbMonth').onchange = () => { RB_MONTH = $('rbMonth').value; renderReimbursements(); };
+    $('rbAll').onclick = () => { RB_MONTH = ''; renderReimbursements(); };
+    v.querySelectorAll('[data-rbfile]').forEach(b => b.onclick = () =>
+      openStoredFile('receipt', b.dataset.rbfile).catch(e => toast(e.message, 'err')));
+
+    v.querySelectorAll('[data-rbok]').forEach(b => b.onclick = async () => {
+      const amount = prompt('お支払いする金額（円）', b.dataset.amount);
+      if (amount === null) return;
+      try {
+        await API.call('admin.reimburse.decide',
+          { id: b.dataset.rbok, decision: '承認', amount });
+        toast('承認しました'); renderReimbursements();
+      } catch (e) { toast(e.message, 'err'); }
+    });
+    v.querySelectorAll('[data-rbng]').forEach(b => b.onclick = async () => {
+      const comment = prompt('却下の理由を書いてください（本人に伝わります）');
+      if (!comment) return;
+      try {
+        await API.call('admin.reimburse.decide',
+          { id: b.dataset.rbng, decision: '却下', comment });
+        toast('却下しました'); renderReimbursements();
+      } catch (e) { toast(e.message, 'err'); }
+    });
+
+    $('rbPaid').onclick = async () => {
+      const ids = Array.from(v.querySelectorAll('.rb-pick:checked')).map(x => x.value);
+      if (!ids.length) return toast('払ったものに印を付けてください', 'err');
+      const month = prompt('どの月のお給料で払いましたか（例 2026-09）', thisMonthStr());
+      if (!month) return;
+      try {
+        const r = await API.call('admin.reimburse.paid', { ids, month });
+        toast(`${r.done}件を「支払いずみ」にしました`); renderReimbursements();
+      } catch (e) { toast(e.message, 'err'); }
+    };
+
+    $('rbCsv').onclick = async () => {
+      try {
+        const r = await API.call('admin.reimburse.export',
+          { month: RB_MONTH || thisMonthStr() });
+        downloadCsv(`立替精算_${r.month}.csv`, r.rows);
+        toast(`${r.count}件・${yen(r.total)} を書き出しました`);
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    hideActionsForViewer();
+  } catch (e) { v.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
+}
+
+const yen = (n) => `${(Number(n) || 0).toLocaleString('ja-JP')}円`;
+const thisMonthStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};

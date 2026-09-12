@@ -12,6 +12,26 @@ const S = {
 const $ = (id) => document.getElementById(id);
 const el = (html) => { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstElementChild; };
 
+/* ホームの機能ボタンのアイコン。端末でばらつく絵文字をやめ、
+   線幅をそろえた線画にする。色分けはCSSの落ち着いたオレンジで統一する。 */
+const HOME_ICONS = {
+  kintai:  '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18m-13 4h3"/>',
+  leave:   '<path d="M6 20h12M12 20V9m0 4C2 13 3 4 3 4s9-1 9 9m0-2C12 3 21 3 21 3s1 8-9 8"/>',
+  ot:      '<path d="M20 14a8 8 0 0 1-10-10A8 8 0 1 0 20 14Z"/>',
+  expense: '<rect x="5" y="3" width="14" height="16" rx="3"/><path d="M5 11h14M8 22l2-3m6 3-2-3M8 15h1m6 0h1"/>',
+  apply:   '<path d="M7 3h8l4 4v14H5V3h2m8 0v5h4M8 12h8m-8 4h5"/>',
+  chat:    '<path d="M4 4h16v12H9l-5 4V4Z"/><path d="M8 8h8m-8 4h5"/>',
+  doc:     '<path d="M13 3H6v18h12V8l-5-5Zm0 0v5h5M9 13h6m-6 4h4"/>',
+  sign:    '<path d="M4 18c3 0 3-8 6-8s2 5 4 5 2-4 5-4"/><path d="M4 21h16"/>',
+  asset:   '<circle cx="8" cy="8" r="4"/><path d="M11 11l7 7m-3 0h3v-3"/>',
+  staff:   '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5"/><path d="M16 6a3 3 0 0 1 0 6m2 8c0-2-1-3.6-3-4.4"/>',
+  mypage:  '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8" cy="11" r="2"/><path d="M13 9h5m-5 3h5M6 16c0-1.5 1-2.4 2-2.4s2 .9 2 2.4"/>',
+  reimburse: '<path d="M4 6h16v12H4z"/><path d="M8 10h2m4 0h2M8 14h8"/><circle cx="12" cy="12" r="0"/>',
+  setting: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M19 5l-2 2M7 17l-2 2"/>',
+  more:    '<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>'
+};
+const icon = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${HOME_ICONS[k] || ''}</svg>`;
+
 /* ============================ 起動 ============================ */
 
 window.addEventListener('DOMContentLoaded', boot);
@@ -203,49 +223,40 @@ function drawHome(v, d, stale) {
   S.home = d;
   const hour = new Date().getHours();
   const greet = hour < 11 ? 'おはようございます' : 'おつかれさまです';
-  const r = (d.punch && d.punch.record) || {};
 
   // 気づいてほしいことは、ボタンの右肩に数で出す
   const lateUnreported = (d.unreported || []).length;
+  // よく使う6つを前面に。残りは「その他」からいつでも開ける。
   const menu = [
-    { k: 'kintai',  ic: '📅', label: '勤怠',        badge: lateUnreported },
-    { k: 'leave',   ic: '🌴', label: '休暇の申請',   badge: 0 },
-    { k: 'ot',      ic: '🌙', label: '残業の申請',   badge: 0 },
-    { k: 'expense', ic: '🚃', label: '通勤交通費',   badge: d.expense_done ? 0 : 1 },
-    { k: 'chat',    ic: '💬', label: '総務に連絡',   badge: d.unread_chat || 0 },
-    { k: 'apply',   ic: '📋', label: '届出・証明書', badge: 0 },
-    { k: 'doc',     ic: '📎', label: '書類の提出',   badge: d.doc_wait || 0 },
-    { k: 'sign',    ic: '✍️', label: '雇用契約',     badge: d.sign_wait || 0 },
-    { k: 'asset',   ic: '🔑', label: '貸与品',       badge: d.asset_wait || 0 },
-    { k: 'staff',   ic: '👥', label: '社員名簿',     badge: 0 },
-    { k: 'mypage',  ic: '🪪', label: 'わたしの情報', badge: d.profile_wait || 0 },
-    { k: 'setting', ic: '⚙️', label: '設定',        badge: 0 }
+    { k: 'kintai',  label: '出退勤の記録', badge: lateUnreported },
+    { k: 'leave',   label: '休暇の申請',   badge: 0 },
+    { k: 'ot',      label: '残業の申請',   badge: 0 },
+    { k: 'expense', label: '通勤交通費',   badge: d.expense_done ? 0 : 1 },
+    { k: 'apply',   label: '届出・証明書', badge: 0 },
+    { k: 'chat',    label: '総務に連絡',   badge: d.unread_chat || 0 }
   ];
+  // 「その他」に入れる機能。件数はまとめて「その他」ボタンに出す。
+  const moreBadge = (d.doc_wait || 0) + (d.sign_wait || 0)
+                  + (d.asset_wait || 0) + (d.profile_wait || 0);
 
   // 入社前の方には、書類と連絡だけを出す。打刻や有給は入社日から。
   const pre = !!(d.me && d.me.pre_hire);
   const preMenu = [
-    { k: 'doc',     ic: '📎', label: '書類の提出',   badge: d.doc_wait || 0 },
-    { k: 'mypage',  ic: '🪪', label: '自己紹介',     badge: d.profile_wait || 0 },
-    { k: 'sign',    ic: '✍️', label: '雇用契約',     badge: d.sign_wait || 0 },
-    { k: 'chat',    ic: '💬', label: '総務に連絡',   badge: d.unread_chat || 0 },
-    { k: 'setting', ic: '⚙️', label: '設定',        badge: 0 }
+    { k: 'doc',     label: '書類の提出',   badge: d.doc_wait || 0 },
+    { k: 'mypage',  label: '自己紹介',     badge: d.profile_wait || 0 },
+    { k: 'sign',    label: '雇用契約',     badge: d.sign_wait || 0 },
+    { k: 'chat',    label: '総務に連絡',   badge: d.unread_chat || 0 },
+    { k: 'setting', label: '設定',        badge: 0 }
   ];
 
-  // 入社したばかりの方には、まず手続きを出す。出し終われば自然に消える。
+  // 未提出の書類は、件数と「確認する」の1行にまとめる。
+  // 打刻より上に大きく出さない。ぜんぶ出し終わると自然に消える。
   const docCard = d.doc_wait ? `
-    <div class="card first-task">
-      <h2 style="margin-bottom:10px;">書類のご提出をお願いします</h2>
-      <div class="progress"><span style="width:${
-        Math.round((d.doc_done / Math.max(1, d.doc_total)) * 100)}%"></span></div>
-      <p class="muted" style="margin:8px 0 0;">
-        ${d.doc_done} / ${d.doc_total} 済み　のこり ${d.doc_wait}件</p>
-      <p class="muted" style="margin:6px 0 0;">
-        スマホで撮った写真をそのまま送れます。
-        ぜんぶ出し終わると、この案内は消えます。</p>
-      <button class="btn primary block" id="homeDocs" style="margin-top:12px;">
-        書類を出す</button>
-    </div>` : '';
+    <button class="doc-inline" id="homeDocs">
+      <span class="doc-count">${d.doc_wait}</span>
+      <span class="doc-text">未提出の書類があります</span>
+      <span class="doc-go">確認する →</span>
+    </button>` : '';
 
   // 月末の確認。期限（翌月2日）が近いので、打刻より上に出す
   const cf = d.confirm;
@@ -260,9 +271,9 @@ function drawHome(v, d, stale) {
       </p>
       <div class="stats" style="margin-bottom:10px;">
         <div class="stat"><b>${cf.summary.work_days}</b><span>出勤</span></div>
-        <div class="stat"><b>${Math.round(cf.summary.total_min / 6) / 10}</b><span>総労働h</span></div>
+        <div class="stat"><b>${Math.round(cf.summary.total_min / 6) / 10}h</b><span>働いた時間</span></div>
         <div class="stat"><b>${cf.summary.paid_days}</b><span>有給</span></div>
-        <div class="stat"><b>${Math.round(cf.summary.overtime_min / 6) / 10}</b><span>残業h</span></div>
+        <div class="stat"><b>${Math.round(cf.summary.overtime_min / 6) / 10}h</b><span>残業した時間</span></div>
       </div>
       <div class="btn-row">
         <button class="btn" id="cfOpen">中身を見る</button>
@@ -309,7 +320,7 @@ function drawHome(v, d, stale) {
       <div class="menu-grid">
         ${preMenu.map(m => `<button class="menu-btn" data-k="${m.k}">
           ${m.badge ? `<span class="menu-badge">${m.badge}</span>` : ''}
-          <span class="ic">${m.ic}</span>${esc(m.label)}</button>`).join('')}
+          <span class="ic">${icon(m.k)}</span>${esc(m.label)}</button>`).join('')}
       </div>
 
       <div class="card">
@@ -329,37 +340,35 @@ function drawHome(v, d, stale) {
     return;
   }
 
+  // 毎日の「今日の勤務」を最上部へ。運行中の帰着・事故対応は勤務カード直下に残す。
+  // 遅刻・早退の理由報告は打刻カード内の1か所にまとめる（重複表示をしない）。
   v.innerHTML = `
-    ${confirmCard}
-    ${docCard}
-    ${installTip()}
     ${punchCard(d.punch, stale)}
-    ${treatmentCard(d)}
     ${driveCard(d)}
-
-    ${(r.late_min || r.early_min) && !r.reported_at ? `
-      <div class="card" style="border-color:var(--warn);">
-        <p style="margin:0 0 10px;">
-          今日は${r.late_min ? fmtMin(r.late_min) + 'の遅刻' : fmtMin(r.early_min) + 'の早退'}が
-          記録されています。理由をお知らせください。</p>
-        <button class="btn block" id="homeReason"
-          style="border-color:var(--warn); color:var(--warn);">理由を報告する</button>
-      </div>` : ''}
+    ${treatmentCard(d)}
+    ${docCard}
+    ${confirmCard}
+    ${installTip()}
 
     <div class="menu-grid">
       ${menu.map(m => `<button class="menu-btn" data-k="${m.k}">
         ${m.badge ? `<span class="menu-badge">${m.badge}</span>` : ''}
-        <span class="ic">${m.ic}</span>${esc(m.label)}</button>`).join('')}
+        <span class="ic">${icon(m.k)}</span>${esc(m.label)}</button>`).join('')}
     </div>
+    <button class="more-btn" id="homeMore">
+      <span class="ic">${icon('more')}</span>社員名簿・そのほか
+      ${moreBadge ? `<span class="menu-badge">${moreBadge}</span>` : ''}
+      <span class="more-go">›</span>
+    </button>
 
     <div class="card">
       <p style="margin:0 0 4px;">${greet}、<b>${esc(d.me ? d.me.name : S.me.name)}</b> さん</p>
       <div class="muted">${monthLabel(d.month)}のようす</div>
       <div class="stats" style="margin-top:12px;">
         <div class="stat"><b>${d.summary.work_days}</b><span>出勤</span></div>
-        <div class="stat"><b>${Math.round(d.summary.total_min / 6) / 10}</b><span>総労働h</span></div>
+        <div class="stat"><b>${Math.round(d.summary.total_min / 6) / 10}h</b><span>働いた時間</span></div>
         <div class="stat"><b>${d.balance.remain}</b><span>有給残</span></div>
-        <div class="stat"><b>${Math.round(d.summary.overtime_min / 6) / 10}</b><span>残業h</span></div>
+        <div class="stat"><b>${Math.round(d.summary.overtime_min / 6) / 10}h</b><span>残業した時間</span></div>
       </div>
     </div>
 
@@ -382,8 +391,8 @@ function drawHome(v, d, stale) {
   if ($('punchQr')) $('punchQr').onclick = () => openQrScanner();
   if ($('punchOut')) $('punchOut').onclick = () => doPunch('out');
   if ($('punchReason')) $('punchReason').onclick = () => openReasonSheet(d.punch.date);
-  if ($('homeReason')) $('homeReason').onclick = () => openReasonSheet(r.date);
   if ($('homeDocs')) $('homeDocs').onclick = () => openDocList();
+  if ($('homeMore')) $('homeMore').onclick = () => openMoreSheet();
   if ($('cfOpen')) $('cfOpen').onclick = () => { S.month = cf.month; openKintaiSheet(); };
   if ($('cfDo')) $('cfDo').onclick = () => confirmMonth(cf.month);
   if ($('treatReport')) $('treatReport').onclick = () => openTreatmentForm();
@@ -391,6 +400,7 @@ function drawHome(v, d, stale) {
   if ($('driveStart')) $('driveStart').onclick = () => openDriveStart();
   if ($('driveEnd')) $('driveEnd').onclick = () => openDriveEnd(d.driving);
   if ($('driveHelp')) $('driveHelp').onclick = () => openIncidentGuide();
+  if ($('driveTrip')) $('driveTrip').onclick = () => openTripSheet();
 
   const open = {
     kintai: openKintaiSheet, leave: openLeaveSheet, ot: openOvertimeSheet,
@@ -411,6 +421,38 @@ function drawHome(v, d, stale) {
         ${n.attachment_url ? `<a class="btn block" style="margin-top:14px;"
            href="${esc(n.attachment_url)}" target="_blank" rel="noopener">添付を開く</a>` : ''}`);
     });
+}
+
+/**
+ * よく使う6つ以外の機能。前面には出さないが、ここから必ず到達できる。
+ * 権限や呼び出し先は元のホームと同じものを使う。
+ */
+function openMoreSheet() {
+  const d = S.home || {};
+  const rest = [
+    { k: 'doc',     label: '書類の提出',   badge: d.doc_wait || 0 },
+    { k: 'sign',    label: '雇用契約',     badge: d.sign_wait || 0 },
+    { k: 'asset',   label: '貸与品',       badge: d.asset_wait || 0 },
+    { k: 'reimburse', label: '立替の精算',  badge: 0 },
+    { k: 'staff',   label: '社員名簿',     badge: 0 },
+    { k: 'mypage',  label: 'わたしの情報', badge: d.profile_wait || 0 },
+    { k: 'setting', label: '設定',        badge: 0 }
+  ];
+  openSheet(`
+    <div class="sheet-title"><h2>社員名簿・そのほか</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <div class="menu-grid" id="moreGrid">
+      ${rest.map(m => `<button class="menu-btn" data-k="${m.k}">
+        ${m.badge ? `<span class="menu-badge">${m.badge}</span>` : ''}
+        <span class="ic">${icon(m.k)}</span>${esc(m.label)}</button>`).join('')}
+    </div>`);
+
+  const open = {
+    doc: openDocList, sign: openSignList, asset: openAssetSheet,
+    reimburse: openReimburseSheet,
+    staff: openStaffSheet, mypage: openMyPageSheet, setting: openSettingSheet
+  };
+  $('moreGrid').querySelectorAll('[data-k]').forEach(b => b.onclick = () => open[b.dataset.k]());
 }
 
 /* ============================ 勤怠 ============================ */
@@ -488,8 +530,8 @@ async function renderKintai() {
       </div>
       <div class="stats" style="margin-bottom:14px;">
         <div class="stat"><b>${k.summary.work_days}</b><span>出勤</span></div>
-        <div class="stat"><b>${Math.round(k.summary.total_min / 6) / 10}</b><span>総労働h</span></div>
-        <div class="stat"><b>${Math.round(k.summary.overtime_min / 6) / 10}</b><span>残業h</span></div>
+        <div class="stat"><b>${Math.round(k.summary.total_min / 6) / 10}h</b><span>働いた時間</span></div>
+        <div class="stat"><b>${Math.round(k.summary.overtime_min / 6) / 10}h</b><span>残業した時間</span></div>
         <div class="stat"><b>${k.summary.paid_days}</b><span>有給</span></div>
       </div>
       <p class="muted">
@@ -614,6 +656,12 @@ function openCorrectionForm(date, rec) {
     <label class="field"><span>そのときの事情</span>
       <textarea id="cReason" style="min-height:80px;"
         placeholder="例）朝、利用者さんの対応が続いていて押しそびれました"></textarea></label>
+
+    <label class="field"><span>写真（あれば）</span>
+      <input type="file" id="cCert" accept="image/*,application/pdf" capture="environment"></label>
+    <p class="muted" id="cCertHelp" style="margin:-8px 0 12px;">
+      遅延証明書など、そのときのことが分かるものがあれば貼ってください。</p>
+
     <button class="btn primary block" id="cSend">総務に送る</button>`);
 
   let picked = '';
@@ -621,6 +669,10 @@ function openCorrectionForm(date, rec) {
     picked = b.dataset.r;
     $('crGrid').querySelectorAll('.kind-btn').forEach(x => x.classList.toggle('on', x === b));
     $('crTime').style.display = needsTime(picked) ? '' : 'none';
+    // 電車の遅れなら、遅延証明をお願いする文にする
+    $('cCertHelp').textContent = picked.indexOf('遅れ') >= 0
+      ? '駅でもらった遅延証明書、またはスマホの画面を撮って貼ってください。'
+      : '遅延証明書など、そのときのことが分かるものがあれば貼ってください。';
     // 「退勤の打刻を忘れた」なら、出勤時刻は打刻ずみの値を使う
     if (picked === '退勤の打刻を忘れた' && rec.start) $('cStart').value = rec.start;
   });
@@ -629,8 +681,10 @@ function openCorrectionForm(date, rec) {
     if (!picked) return toast('どれか選んでください', 'err');
     const btn = $('cSend'); btn.disabled = true; btn.textContent = '送信中…';
     try {
+      const f = $('cCert') ? $('cCert').files[0] : null;
       const payload = { date, kind: kindOf(picked), reason_type: picked,
-                        reason: $('cReason').value };
+                        reason: $('cReason').value,
+                        file: f ? await shrinkImage(f) : null };
       if (needsTime(picked)) {
         payload.start = $('cStart').value;
         payload.end = $('cEnd').value;
@@ -807,7 +861,7 @@ async function renderOvertimeBody() {
         残業は<b>前もっての申請と承認が必要</b>です。申請のない超過分は残業になりません。
         打刻を押し忘れて遅い時刻になってしまった場合も、ここから事情を書いて申請してください。
       </p>
-      <p class="muted">所定 ${Math.round(ot.scheduled_min / 6) / 10}時間</p>
+      <p class="muted">勤務予定 ${Math.round(ot.scheduled_min / 6) / 10}時間</p>
       <button class="btn primary block" style="margin:12px 0;" id="newOt">残業を申請する</button>
       ${ot.requests.length ? `<div class="list">${ot.requests.map(r => `
         <div class="item" style="cursor:default;">
@@ -1322,7 +1376,7 @@ function punchCard(p, stale) {
   const rec = p.record || {};
   const shift = p.shift || {};
   const shiftLabel = (shift.start && shift.end)
-    ? `所定 ${shift.start} 〜 ${shift.end}` : '所定の時間は登録されていません';
+    ? `勤務予定 ${shift.start} 〜 ${shift.end}` : '勤務の予定時間は登録されていません';
   const inDone = p.punched_in, outDone = p.punched_out;
   const field = shift.mode === 'field';
   const useQr = !!shift.use_qr;
@@ -1347,13 +1401,18 @@ function punchCard(p, stale) {
   }
   const outLabel = outDone ? '退勤ずみ' : (field ? '直帰で退勤' : '退勤');
 
+  // いまの勤務状態を言葉で示す（色だけに頼らない）
+  const stateLabel = outDone ? '退勤済' : inDone ? '勤務中' : '出勤前';
+  const stateCls = outDone ? 'done' : inDone ? 'active' : '';
+
   return `
     <div class="card">
       <div class="card-head">
-        <h2>今日の打刻</h2>
-        <span class="muted">${stale ? '最新の状態を確認しています…'
-          : esc(p.date.slice(5).replace('-', '/')) + '　' + esc(shiftLabel)}</span>
+        <h2>今日の勤務</h2>
+        <span class="home-status ${stateCls}">${stateLabel}</span>
       </div>
+      <p class="muted" style="margin:0 0 12px;">${stale ? '最新の状態を確認しています…'
+        : esc(p.date.slice(5).replace('-', '/')) + '　' + esc(shiftLabel)}</p>
 
       ${inDone ? `<div class="item" style="cursor:default; margin-bottom:8px;">
           <div class="grow"><div class="title">出勤　${esc(rec.start || '')}
@@ -1799,9 +1858,63 @@ function driveCard(d) {
     <div class="card">
       <div class="card-head"><h2>車を使うとき</h2></div>
       <button class="btn block" id="driveStart">出発を記録する</button>
+      <button class="btn block" id="driveTrip" style="margin-top:8px;">休日に遠出するとき（事前の申請）</button>
       <button class="btn block" id="driveHelp" style="margin-top:8px;
         border-color:var(--danger); color:var(--danger);">事故・トラブルが起きたら</button>
     </div>`;
+}
+
+/* ============================ 休日の遠出の申請 ============================ */
+
+async function openTripSheet() {
+  try {
+    const d = await API.call('trip.mine');
+    const st = s => s === '承認' ? 'ok' : s === '却下' ? 'err' : s === '取消' ? '' : 'warn';
+    openSheet(`
+      <div class="sheet-title"><h2>休日の遠出の申請</h2>
+        <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+      <p class="muted" style="margin-top:0;">休みの日に社用車で遠くまで出かけるときは、前もって申請してください。
+        承認されてから使えます（事故のときの保険の扱いに関わります）。当日は「出発を記録する」もお願いします。</p>
+      <label class="field"><span>使う車</span>
+        <select id="tpCar">${d.cars.map(c => `<option value="${esc(c.id)}">${esc(c.name)}${c.plate4 ? '（' + esc(c.plate4) + '）' : ''}${c.office ? '　' + esc(c.office) : ''}</option>`).join('')}</select></label>
+      <label class="field"><span>出発日</span><input type="date" id="tpFrom" min="${esc(d.today)}"></label>
+      <label class="field"><span>帰着日</span><input type="date" id="tpTo" min="${esc(d.today)}"></label>
+      <label class="field"><span>行き先</span><input type="text" id="tpDest" placeholder="例：長野県 軽井沢"></label>
+      <label class="field"><span>目的</span><input type="text" id="tpPurpose" placeholder="例：家族旅行／研修に参加"></label>
+      <label class="field"><span>走る予定の距離（往復のおおよそ・km）</span><input type="number" id="tpKm" inputmode="numeric" placeholder="例：300"></label>
+      <label class="field"><span>同乗者（いれば）</span><input type="text" id="tpWith" placeholder="例：家族2名"></label>
+      <label class="field" style="flex-direction:row; align-items:center; gap:8px;">
+        <input type="checkbox" id="tpFuel" style="width:22px;height:22px;"> <span>給油カード（ENEOS）を使う</span></label>
+      <label class="field"><span>備考</span><textarea id="tpNote" style="min-height:60px;"></textarea></label>
+      <button class="btn primary block" id="tpGo">申請する</button>
+      <h3 style="margin:18px 0 6px;">これまでの申請</h3>
+      ${d.requests.length ? `<div class="list">${d.requests.map(r => `
+        <div class="item" style="cursor:default;">
+          <div class="grow">
+            <div class="title">${fmtDate(r.date_from)}${r.date_to !== r.date_from ? '〜' + fmtDate(r.date_to) : ''}　${esc(r.car_name)}</div>
+            <div class="meta"><span class="badge ${st(r.status)}">${esc(r.status)}</span> ${esc(r.destination)}${r.comment ? '<br>総務より：' + esc(r.comment) : ''}</div>
+          </div>
+          ${(r.status === '申請中' || (r.status === '承認' && r.date_from >= d.today)) ? `<button class="btn sm" data-cancel="${esc(r.id)}">取消</button>` : ''}
+        </div>`).join('')}</div>` : '<div class="empty-state">まだ申請はありません</div>'}`);
+    $('tpFrom').onchange = () => { if (!$('tpTo').value || $('tpTo').value < $('tpFrom').value) $('tpTo').value = $('tpFrom').value; };
+    $('tpGo').onclick = async () => {
+      const btn = $('tpGo'); btn.disabled = true; btn.textContent = '送信中…';
+      try {
+        const r = await API.call('trip.create', {
+          car_id: $('tpCar').value, date_from: $('tpFrom').value, date_to: $('tpTo').value || $('tpFrom').value,
+          destination: $('tpDest').value, purpose: $('tpPurpose').value, distance_km: $('tpKm').value,
+          passengers: $('tpWith').value, fuel_card: $('tpFuel').checked, note: $('tpNote').value
+        });
+        toast(r.overlap ? '申請しました。同じ日に同じ車の申請が他にもあります（総務が調整します）' : '申請しました。承認されるとお知らせします');
+        openTripSheet();
+      } catch (e) { toast(e.message, 'err'); btn.disabled = false; btn.textContent = '申請する'; }
+    };
+    document.querySelectorAll('[data-cancel]').forEach(b => b.onclick = async () => {
+      if (!confirm('この申請を取り消しますか？')) return;
+      try { await API.call('trip.cancel', { id: b.dataset.cancel }); toast('取り消しました'); openTripSheet(); }
+      catch (e) { toast(e.message, 'err'); }
+    });
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 async function openDriveStart() {
@@ -2018,6 +2131,7 @@ async function openDriveHistory() {
       <div class="btn-row" style="margin-bottom:14px;">
         ${d.driving ? '<button class="btn primary" id="dhEnd">帰着を記録する</button>'
                     : '<button class="btn primary" id="dhStart">出発を記録する</button>'}
+        <button class="btn" id="dhTrip">休日の遠出を申請</button>
         <button class="btn" id="dhHelp" style="border-color:var(--danger); color:var(--danger);">
           事故のときは</button>
       </div>
@@ -2035,6 +2149,7 @@ async function openDriveHistory() {
     if ($('dhStart')) $('dhStart').onclick = () => openDriveStart();
     if ($('dhEnd')) $('dhEnd').onclick = () => openDriveEnd(d.driving);
     $('dhHelp').onclick = () => openIncidentGuide();
+    if ($('dhTrip')) $('dhTrip').onclick = () => openTripSheet();
   } catch (e) { toast(e.message, 'err'); }
 }
 
@@ -2532,6 +2647,7 @@ async function confirmMonth(month) {
 
 let DIR = null;          // いちど読んだ名簿は覚えておく（写真の読み直しを避ける）
 let DIR_FILTER = { office: '', q: '' };
+let DIR_SCROLL = 0;      // 名簿のどこを見ていたか
 
 async function openStaffSheet() {
   openSheet(`
@@ -2553,11 +2669,14 @@ function renderDirectory() {
     (!q || [x.name, x.kana, x.job_title, x.office].join(' ').indexOf(q) >= 0));
 
   // 事業所ごとにまとめて出す。ふだん会う顔が固まっていたほうが探しやすい
+  // 事業所ごとにまとめて出す。ふだん会う顔が固まっていたほうが探しやすい。
+  // 法人は色でも分けているが、色が見分けにくい場面（屋外・色覚）もあるので
+  // 見出しに法人名も文字で書く。
   const groups = [];
   list.forEach(x => {
     const g = groups[groups.length - 1];
     if (g && g.office === x.office) g.items.push(x);
-    else groups.push({ office: x.office, items: [x] });
+    else groups.push({ office: x.office, company: x.company, items: [x] });
   });
 
   v.innerHTML = `
@@ -2571,14 +2690,14 @@ function renderDirectory() {
     </div>
     ${CO_LEGEND}
     ${list.length ? groups.map(g => `
-      <div class="office-head">${esc(g.office || '（事業所なし）')}　${g.items.length}名</div>
+      <div class="office-head">${esc(g.office || '（事業所なし）')}　${esc(g.company || '')}　${g.items.length}名</div>
       <div class="people">${g.items.map(x => `
-        <div class="person ${companyClass(x.company)}" data-code="${esc(x.code)}">
+        <button type="button" class="person ${companyClass(x.company)}" data-code="${esc(x.code)}">
           <div class="face" ${x.photo_id ? `data-face="${esc(x.photo_id)}"` : ''}>${esc(initial(x.name))}</div>
           <b>${esc(x.name)}</b>
           ${x.nickname ? `<span>${esc(x.nickname)}</span>` : ''}
           <span>${esc(x.job_title || x.employment || '')}</span>
-        </div>`).join('')}</div>`).join('')
+        </button>`).join('')}</div>`).join('')
       : '<div class="empty-state">見つかりませんでした</div>'}
     <p class="muted" style="margin-top:14px;">
       顔写真は「書類の提出」で送った顔写真をそのまま使っています。
@@ -2589,15 +2708,29 @@ function renderDirectory() {
   v.querySelectorAll('[data-office]').forEach(b => b.onclick = () => {
     DIR_FILTER.office = b.dataset.office; renderDirectory();
   });
-  v.querySelectorAll('[data-code]').forEach(b => b.onclick = () => openStaffCard(b.dataset.code));
+  v.querySelectorAll('[data-code]').forEach(b => b.onclick = () => {
+    DIR_SCROLL = v.scrollTop || (v.parentElement ? v.parentElement.scrollTop : 0);
+    openStaffCard(b.dataset.code, true);
+  });
+  // 名簿にもどったとき、見ていたところへ戻す
+  if (DIR_SCROLL) {
+    const box = v.parentElement || v;
+    requestAnimationFrame(() => { box.scrollTop = DIR_SCROLL; });
+  }
   fillFaces(v);
 }
 
-async function openStaffCard(code) {
+async function openStaffCard(code, fromList) {
+  // 名簿から開いたときは「もどる」を出す。顔を見くらべて探す人は、
+  // 1人見るたびに「その他 → 社員名簿」と入り直すことになってしまう
   openSheet(`
-    <div class="sheet-title"><h2>社員のじょうほう</h2>
-      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <div class="sheet-title"><h2>社員情報</h2>
+      <div style="display:flex; gap:8px;">
+        ${fromList ? '<button class="btn sm" id="backToDir">名簿にもどる</button>' : ''}
+        <button class="btn sm ghost" onclick="closeSheet()">閉じる</button>
+      </div></div>
     <div id="cardBody"><div class="loading">読み込み中…</div></div>`);
+  if ($('backToDir')) $('backToDir').onclick = () => openStaffSheet();
   const v = $('cardBody');
   try {
     const d = await API.call('staff.card', { code });
@@ -2674,7 +2807,8 @@ async function renderMyPage() {
         </div>
       </div>
 
-      ${introFormCard(opt.questions || d.questions || [], p)}
+      ${introFormCard(opt.questions || d.questions || [], p,
+                      d.intro_notice || opt.intro_notice, d.intro_pending)}
 
       <div class="card" style="margin-top:12px;">
         <b>連絡先</b>
@@ -2733,6 +2867,13 @@ async function renderMyPage() {
         });
         DIR = null;                      // 名簿を作り直させる
         toast('保存しました');
+      } catch (err) { toast(err.message, 'err'); }
+    };
+    if ($('iLater')) $('iLater').onclick = async () => {
+      try {
+        await API.call('profile.save', { later: true });
+        toast('わかりました。書きたくなったらいつでもどうぞ');
+        renderMyPage();
       } catch (err) { toast(err.message, 'err'); }
     };
     if ($('iSave')) $('iSave').onclick = async () => {
@@ -2799,6 +2940,12 @@ function openQualForm(presets) {
  * 会ったことのない方だと、それでは人が見えてこない。
  * 名簿にあることと、ご本人が書いたことを、先にひとまとめで出す。
  */
+const ownLine = (o) => `
+  <div style="margin-top:8px;">
+    <span class="muted" style="font-size:12px;">${esc(o.label)}</span>
+    <div style="white-space:pre-wrap;">${esc(o.text)}</div>
+  </div>`;
+
 function summaryCard(sm) {
   if (!sm) return '';
   const facts = (sm.lines || []).map(esc).join('　／　');
@@ -2807,11 +2954,11 @@ function summaryCard(sm) {
     <div class="card" style="background:var(--accent-soft); border-color:var(--accent-soft); margin-bottom:12px;">
       ${facts ? `<div style="font-size:13px;">${facts}</div>` : ''}
       ${sm.intro ? `<p style="margin:8px 0 0; white-space:pre-wrap;">${esc(sm.intro)}</p>` : ''}
-      ${(sm.own || []).length ? `<div style="margin-top:10px;">${sm.own.map(o => `
-        <div style="margin-top:6px;">
-          <span class="muted" style="font-size:11px;">${esc(o.label)}</span>
-          <div style="white-space:pre-wrap;">${esc(o.text)}</div>
-        </div>`).join('')}</div>` : ''}
+      ${(sm.own || []).length ? `
+        ${sm.own.slice(0, 2).map(ownLine).join('')}
+        ${sm.own.length > 2 ? `<details style="margin-top:6px;">
+          <summary style="cursor:pointer; padding:8px 0; font-size:13px;">もっと見る</summary>
+          ${sm.own.slice(2).map(ownLine).join('')}</details>` : ''}` : ''}
       ${!sm.written ? `<p class="muted" style="margin:6px 0 0;">
         自己紹介はまだ書かれていません。</p>` : ''}
     </div>`;
@@ -2823,29 +2970,148 @@ function summaryCard(sm) {
  * 質問はサーバから受け取る（文言を1か所で直せるように）。
  * ぜんぶ任意。書かないことを責めない言い方にしている。
  */
-function introFormCard(questions, p) {
+function introFormCard(questions, p, notice, pending) {
   if (!questions.length) return '';
   const written = questions.some(q => String(p[q.key] || '').trim());
+  const field = (q) => `
+    <label class="field"><span>${esc(q.label)}</span>
+      ${q.type === 'textarea'
+        ? `<textarea data-q="${esc(q.key)}" rows="2"
+             placeholder="${esc(q.placeholder || '')}">${esc(p[q.key] || '')}</textarea>`
+        : `<input type="text" data-q="${esc(q.key)}"
+             value="${esc(p[q.key] || '')}" placeholder="${esc(q.placeholder || '')}">`}
+    </label>
+    ${q.help ? `<p class="muted" style="margin:-8px 0 10px; font-size:12px;">${esc(q.help)}</p>` : ''}`;
+
+  const first = questions.filter(q => q.first);
+  const more = questions.filter(q => !q.first);
+  // あとの質問にもう書いてあるなら、最初から開いておく
+  const moreOpen = more.some(q => String(p[q.key] || '').trim());
+
   return `
-    <div class="card ${written ? '' : 'first-task'}">
+    <div class="card ${pending ? 'first-task' : ''}">
       <b>自己紹介</b>
-      <p class="muted" style="margin:4px 0 10px;">
-        ${written
-          ? '社員名簿を開いた方に出ます。いつでも書き直せます。'
-          : 'はじめまして。あなたのことを、すこし教えてください。'}<br>
+      <p class="muted" style="margin:4px 0 8px;">
+        ${written ? 'いつでも書き直せます。' : 'はじめまして。あなたのことを、すこし教えてください。'}<br>
         <b>ぜんぶ書かなくて大丈夫です。</b>書きたいところだけで結構です。</p>
+      ${notice ? `<p class="muted" style="margin:0 0 12px;">${esc(notice)}</p>` : ''}
       <div id="introFields">
-        ${questions.map(q => `
-          <label class="field"><span>${esc(q.label)}</span>
-            ${q.type === 'textarea'
-              ? `<textarea data-q="${esc(q.key)}" rows="2"
-                   placeholder="${esc(q.placeholder || '')}">${esc(p[q.key] || '')}</textarea>`
-              : `<input type="text" data-q="${esc(q.key)}"
-                   value="${esc(p[q.key] || '')}" placeholder="${esc(q.placeholder || '')}">`}
-          </label>
-          ${q.help ? `<p class="muted" style="margin:-8px 0 10px; font-size:12px;">${esc(q.help)}</p>` : ''}
-        `).join('')}
+        ${first.map(field).join('')}
+        <details id="introMore" ${moreOpen ? 'open' : ''} style="margin:4px 0 12px;">
+          <summary style="cursor:pointer; padding:10px 0; font-weight:600;">もっと書く（任意）</summary>
+          <div style="margin-top:10px;">${more.map(field).join('')}</div>
+        </details>
       </div>
       <button class="btn primary block" id="iSave">保存する</button>
+      ${pending ? `<button class="btn ghost block" style="margin-top:8px;" id="iLater">
+        いまは書かない</button>` : ''}
     </div>`;
+}
+
+/* ============================ 立替の精算 ============================ */
+
+/**
+ * 立て替えて買ってきたものを、表に打ち込まずにそのまま出せるようにする。
+ * 出す側は「領収書を撮る・金額・何に使ったか」の3つだけ。
+ */
+async function openReimburseSheet() {
+  openSheet(`
+    <div class="sheet-title"><h2>立替の精算</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <div id="rbBody"><div class="loading">読み込み中…</div></div>`);
+  await renderReimburse();
+}
+
+async function renderReimburse() {
+  const v = $('rbBody');
+  if (!v) return;
+  try {
+    const d = await API.call('reimburse.mine');
+    v.innerHTML = `
+      ${d.waiting ? `<div class="card" style="margin-bottom:12px;">
+        <b>${d.waiting}件・${yen(d.waiting_yen)} が確認待ちです</b>
+        <p class="muted" style="margin:4px 0 0;">承認されると、お給料と一緒にお支払いします。</p>
+      </div>` : ''}
+      <button class="btn primary block" style="margin-bottom:14px;" id="rbNew">
+        領収書を出す</button>
+
+      ${d.items.length ? `<div class="list">${d.items.map(r => `
+        <div class="item" style="cursor:default;">
+          <div class="grow">
+            <div class="title">${yen(r.amount)}　${esc(r.category)}</div>
+            <div class="meta">${fmtDate(r.date)}${r.payee ? '　' + esc(r.payee) : ''}<br>
+              ${esc(r.purpose)}${r.comment ? '<br>' + esc(r.comment) : ''}
+              ${r.paid_month ? `<br>${esc(r.paid_month)}のお給料でお支払いずみ` : ''}</div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
+            <span class="badge ${r.status === '承認' ? 'ok' : r.status === '却下' ? 'warn' : ''}">${esc(r.status)}</span>
+            ${r.has_file ? `<button class="btn sm ghost" data-rbfile="${esc(r.id)}">領収書</button>` : ''}
+            ${r.status === '申請中' ? `<button class="btn sm ghost" data-rbdel="${esc(r.id)}">取消</button>` : ''}
+          </div>
+        </div>`).join('')}</div>`
+        : '<div class="empty-state">まだ申請はありません</div>'}
+
+      <p class="muted" style="margin-top:14px;">
+        <b>領収書の紙は捨てずに、これまでどおり総務へお回しください。</b>
+        写真は確認と記録のためのもので、原本の代わりにはなりません。</p>`;
+
+    $('rbNew').onclick = () => openReimburseForm(d.categories, d.max_yen);
+    v.querySelectorAll('[data-rbfile]').forEach(b => b.onclick = () =>
+      openStoredFile('receipt', b.dataset.rbfile).catch(e => toast(e.message, 'err')));
+    v.querySelectorAll('[data-rbdel]').forEach(b => b.onclick = async () => {
+      if (!confirm('この申請を取り消しますか？')) return;
+      try { await API.call('reimburse.cancel', { id: b.dataset.rbdel });
+            toast('取り消しました'); renderReimburse(); }
+      catch (e) { toast(e.message, 'err'); }
+    });
+  } catch (e) { v.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+}
+
+const yen = (n) => `${(Number(n) || 0).toLocaleString('ja-JP')}円`;
+
+function openReimburseForm(categories, maxYen) {
+  const today = new Date();
+  const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  openSheet(`
+    <div class="sheet-title"><h2>領収書を出す</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <p class="muted">立て替えて買っていただいたぶんを精算します。1枚ずつお願いします。</p>
+
+    <label class="field"><span>領収書の写真</span>
+      <input type="file" id="rbFile" accept="image/*,application/pdf" capture="environment"></label>
+    <p class="muted" style="margin:-8px 0 12px;">
+      レシートでも構いません。金額と日付が写るように撮ってください。</p>
+
+    <div class="cols">
+      <label class="field"><span>立て替えた日</span>
+        <input type="date" id="rbDate" value="${ymd}" max="${ymd}"></label>
+      <label class="field"><span>金額（円）</span>
+        <input type="number" id="rbAmount" inputmode="numeric" min="1" placeholder="1280"></label>
+    </div>
+
+    <label class="field"><span>何に使いましたか</span>
+      <select id="rbCat">${categories.map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
+    <label class="field"><span>くわしく</span>
+      <input type="text" id="rbPurpose" placeholder="例）運動クラスのボール2個"></label>
+    <label class="field"><span>お店の名前（任意）</span>
+      <input type="text" id="rbPayee" placeholder="例）〇〇ホームセンター"></label>
+
+    <button class="btn primary block" style="margin-top:8px;" id="rbSend">総務に送る</button>
+    <p class="muted" style="margin-top:10px;">
+      1件 ${yen(maxYen)} を超えるものは、先に「総務に連絡」からご相談ください。</p>`);
+
+  $('rbSend').onclick = async () => {
+    const f = $('rbFile').files[0];
+    if (!f) return toast('領収書の写真を貼ってください', 'err');
+    if (!Number($('rbAmount').value)) return toast('金額を入れてください', 'err');
+    if (!$('rbPurpose').value.trim()) return toast('何に使ったかを書いてください', 'err');
+    const btn = $('rbSend'); btn.disabled = true; btn.textContent = '送信中…';
+    try {
+      await API.call('reimburse.create', {
+        date: $('rbDate').value, amount: $('rbAmount').value,
+        category: $('rbCat').value, purpose: $('rbPurpose').value,
+        payee: $('rbPayee').value, file: await shrinkImage(f) });
+      closeSheet(); toast('総務に送りました'); openReimburseSheet();
+    } catch (e) { toast(e.message, 'err'); btn.disabled = false; btn.textContent = '総務に送る'; }
+  };
 }
