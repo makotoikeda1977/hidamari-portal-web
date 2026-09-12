@@ -2625,7 +2625,8 @@ async function renderTreatments() {
 
       <div class="card-head">
         <h2>お一人ごとの回数（レセプトの確認用）</h2>
-        <button class="btn sm" id="trCsv">CSVをダウンロード</button>
+        <button class="btn sm" id="trCsv">日報のCSV</button>
+        <button class="btn sm" id="trPatCsv">患者マスタのCSV</button>
       </div>
       ${d.patients.length ? `<div class="table-wrap" style="margin-bottom:20px;"><table class="grid">
         <thead><tr><th>お名前</th><th class="num">回数</th><th class="num">合計(分)</th>
@@ -2663,15 +2664,26 @@ async function renderTreatments() {
         変えたいときは「事業所・打刻設定」の下で対象を指定できます。
       </p>`;
 
+    // レセプトは総務アプリで作る。こちらは日報と患者マスタを渡すところまで
+    const saveCsv = (csv, name) => {
+      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
     $('trCsv').onclick = async () => {
       try {
         const r = await API.call('admin.treatments.export', { month: A.month });
-        const blob = new Blob(['\ufeff' + r.csv], { type: 'text/csv;charset=utf-8' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `治療院日報_${A.month}.csv`;
-        a.click();
-        URL.revokeObjectURL(a.href);
+        saveCsv(r.csv, `治療院日報_${A.month}.csv`);
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    $('trPatCsv').onclick = async () => {
+      try {
+        const r = await API.call('admin.patients.export');
+        saveCsv(r.csv, `治療院患者マスタ_${A.month}.csv`);
+        toast(`${r.count}名を書き出しました`);
       } catch (e) { toast(e.message, 'err'); }
     };
   } catch (e) { v.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
