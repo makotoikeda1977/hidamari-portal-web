@@ -1020,20 +1020,25 @@ async function renderNotice() {
   const v = $('v-notice');
   v.innerHTML = '<div class="loading">読み込み中…</div>';
   try {
-    const d = await API.call('notice.list');
+    const [d, sc] = await Promise.all([
+      API.call('notice.list'), API.call('notice.scopes')]);
     v.innerHTML = `
       <div class="cols">
         <div class="card">
           <h2>お知らせを出す</h2>
+          ${sc.can_all ? '' : `<p class="muted" style="margin-top:0;">
+            <b>${esc(sc.office)}</b> の皆さんあてに出します。
+            ほかの事業所や全社あてに出したいときは、総務にご相談ください。</p>`}
           <label class="field"><span>件名</span><input type="text" id="nTitle"></label>
           <label class="field"><span>本文</span><textarea id="nBody"></textarea></label>
-          <label class="field"><span>対象</span>
-            <select id="nScope"><option value="全社">全社</option>
-              <option value="法人">法人を指定</option><option value="事業所">事業所を指定</option></select></label>
-          <div id="nTargetBox" style="display:none;">
-            <label class="field"><span>対象の名前（法人名または事業所名）</span>
-              <input type="text" id="nTarget" placeholder="例）ひだまり倶楽部 / TEENS2"></label>
-          </div>
+          ${sc.can_all ? `
+            <label class="field"><span>対象</span>
+              <select id="nScope">${sc.scopes.map(x => `<option value="${esc(x)}">${
+                x === '全社' ? '全社' : x === '法人' ? '法人を指定' : '事業所を指定'}</option>`).join('')}</select></label>
+            <div id="nTargetBox" style="display:none;">
+              <label class="field"><span>対象</span>
+                <select id="nTarget"></select></label>
+            </div>` : '<input type="hidden" id="nScope" value="事業所">'}
           <label class="field"><span>添付のURL（任意・Driveの共有リンクなど）</span>
             <input type="text" id="nUrl"></label>
           <label style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
@@ -1049,15 +1054,22 @@ async function renderNotice() {
                 <div class="title">${n.important === 'yes' ? '<span class="badge warn">重要</span> ' : ''}${esc(n.title)}</div>
                 <div class="meta">${fmtDateTime(n.published_at)} ・ ${esc(n.scope)}${esc(n.company || n.office || '')}</div>
               </div>
-              <button class="btn sm danger" data-del="${esc(n.id)}">削除</button>
+              ${sc.can_all || (n.scope === '事業所' && n.office === sc.office)
+                ? `<button class="btn sm danger" data-del="${esc(n.id)}">削除</button>` : ''}
             </div>`).join('')}</div>`
           : '<div class="empty-state">お知らせはありません</div>'}
         </div>
       </div>`;
 
-    $('nScope').onchange = () => {
-      $('nTargetBox').style.display = $('nScope').value === '全社' ? 'none' : '';
-    };
+    if (sc.can_all) {
+      const fill = () => {
+        const sel = $('nScope').value;
+        $('nTargetBox').style.display = sel === '全社' ? 'none' : '';
+        const opts = sel === '法人' ? sc.companies : sc.offices;
+        $('nTarget').innerHTML = opts.map(x => `<option>${esc(x)}</option>`).join('');
+      };
+      $('nScope').onchange = fill; fill();
+    }
     $('nSave').onclick = async () => {
       if (!$('nTitle').value) return toast('件名を入れてください', 'err');
       const scope = $('nScope').value;
