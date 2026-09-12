@@ -2,102 +2,52 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#f7f5f2" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#191512" media="(prefers-color-scheme: dark)">
-<link rel="stylesheet" href="style.css">
-<title>ひだまりグループ 管理</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ひだまりグループ 社内ポータル — 引っ越しました</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin:0; padding:28px 20px; background:#f7f5f2; color:#241d18;
+         font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+         line-height:1.75; font-size:16px; }
+  .box { max-width:420px; margin:0 auto; background:#fff; border:1px solid #ece5dd;
+         border-radius:14px; padding:24px 20px; }
+  h1 { font-size:20px; margin:0 0 14px; }
+  .go { display:block; background:#b35709; color:#fff; text-decoration:none;
+        text-align:center; font-weight:700; padding:16px; border-radius:12px;
+        margin:18px 0; font-size:17px; }
+  ol { padding-left:1.3em; margin:10px 0 0; }
+  li { margin-bottom:8px; }
+  .muted { color:#6f635a; font-size:14px; }
+  @media (prefers-color-scheme: dark) {
+    body { background:#191512; color:#f0eae4; }
+    .box { background:#2b241e; border-color:#453a32; }
+    .go { background:#f0a05a; color:#24180d; }
+    .muted { color:#a89a8f; }
+  }
+</style>
 </head>
-<body class="admin">
+<body>
+  <div class="box">
+    <h1>新しい場所に引っ越しました</h1>
+    <p>社内ポータルは、会社のサーバへ移りました。<br>
+       <b>この画面はもう使えません。</b>お手数ですが、新しいほうを開いてください。</p>
 
-<div class="app">
-  <div class="topbar">
-    <div>
-      <h1>ひだまりグループ 管理</h1>
-      <div class="sub" id="whoami"></div>
-    </div>
-    <div style="display:flex; gap:8px;">
-      <input type="month" id="monthPick" style="width:150px;">
-      <button class="btn sm" id="btnStaff">社員画面へ</button>
-      <button class="btn sm ghost" id="btnLogout">ログアウト</button>
-    </div>
+    <a class="go" href="https://hidamari-in.sakura.ne.jp/portal/">新しい社内ポータルを開く</a>
+
+    <p><b>ホーム画面に入れている方へ</b></p>
+    <ol>
+      <li>ホーム画面の<b>古いアイコンを削除</b>してください</li>
+      <li>上のボタンから新しい画面を開きます</li>
+      <li>ふだんどおり<b>ホーム画面に追加</b>してください
+        （iPhone は「共有」→「ホーム画面に追加」）</li>
+      <li>はじめての打刻のときに、<b>位置情報の許可をもう一度</b>聞かれます</li>
+    </ol>
+
+    <p class="muted" style="margin-top:18px;">
+      ログインに使うメールアドレスとパスワードは、これまでと同じです。
+      打刻や申請の記録もそのまま残っています。<br>
+      分からないことがあれば、総務（048-778-9900）までご連絡ください。</p>
   </div>
-
-  <div class="admin-body">
-    <nav class="side" id="tabs">
-      <div class="side-group">社員名簿</div>
-      <button data-v="dir" class="on">顔写真つき名簿</button>
-      <button data-v="quals">資格・免許<span class="count" id="cQual" style="display:none"></span></button>
-
-      <div class="side-group">勤怠</div>
-      <button data-v="dash">ダッシュボード</button>
-      <button data-v="corr">勤怠の申告<span class="count" id="cCorr" style="display:none"></span></button>
-      <button data-v="dev">遅刻・早退<span class="count" id="cDev" style="display:none"></span></button>
-
-      <div class="side-group">申請</div>
-      <button data-v="leave">有給・残業の承認<span class="count" id="cLeave" style="display:none"></span></button>
-      <button data-v="exp">交通費<span class="count" id="cExp" style="display:none"></span></button>
-      <button data-v="reimburse">立替の精算<span class="count" id="cRb" style="display:none"></span></button>
-      <button data-v="shift">シフト希望<span class="count" id="cShift" style="display:none"></span></button>
-      <button data-v="apply">届出・証明書<span class="count" id="cApply" style="display:none"></span></button>
-
-      <div class="side-group">やりとり</div>
-      <button data-v="chat">総務への連絡<span class="count" id="cChat" style="display:none"></span></button>
-      <button data-v="docs">提出書類<span class="count" id="cDocs" style="display:none"></span></button>
-      <button data-v="notice">お知らせ</button>
-
-      <div class="side-group">治療院</div>
-      <button data-v="treat">日報・レセプト</button>
-
-      <div class="side-group">車両</div>
-      <button data-v="drive">運行記録</button>
-      <button data-v="incident">事故の報告<span class="count" id="cInc" style="display:none"></span></button>
-
-      <div class="side-group">台帳・設定</div>
-      <button data-v="contract">雇用契約<span class="count" id="cCon" style="display:none"></span></button>
-      <button data-v="pledge">誓約書<span class="count" id="cPle" style="display:none"></span></button>
-      <button data-v="leaves">有給の管理簿<span class="count" id="cDuty" style="display:none"></span></button>
-      <button data-v="assets">貸与品<span class="count" id="cAsset" style="display:none"></span></button>
-      <button data-v="emps">社員</button>
-      <button data-v="offices">事業所・打刻設定</button>
-      <button data-v="kaonavi">カオナビ連動</button>
-      <button data-v="audit">操作ログ</button>
-    </nav>
-    <div class="admin-main">
-
-  <section class="view" id="v-dash"></section>
-  <section class="view" id="v-leaves"></section>
-  <section class="view" id="v-corr"></section>
-  <section class="view" id="v-dev"></section>
-  <section class="view" id="v-leave"></section>
-  <section class="view" id="v-chat"></section>
-  <section class="view" id="v-apply"></section>
-  <section class="view" id="v-exp"></section>
-  <section class="view" id="v-reimburse"></section>
-  <section class="view" id="v-shift"></section>
-  <section class="view" id="v-docs"></section>
-  <section class="view" id="v-emps"></section>
-  <section class="view" id="v-offices"></section>
-  <section class="view" id="v-kaonavi"></section>
-  <section class="view" id="v-notice"></section>
-  <section class="view" id="v-treat"></section>
-  <section class="view" id="v-drive"></section>
-  <section class="view" id="v-incident"></section>
-  <section class="view" id="v-contract"></section>
-  <section class="view" id="v-pledge"></section>
-  <section class="view" id="v-assets"></section>
-  <section class="view active" id="v-dir"><div class="loading">読み込み中…</div></section>
-  <section class="view" id="v-quals"></section>
-  <section class="view" id="v-audit"></section>
-    </div>
-  </div>
-</div>
-
-<div class="sheet-bg" id="sheetBg"><div class="sheet" id="sheet"
-     style="border-radius:16px; max-width:820px; margin-bottom:5vh;"></div></div>
-
-<script src="config.js"></script>
-<script src="api.js"></script>
-<script src="admin.js"></script>
 </body>
 </html>
