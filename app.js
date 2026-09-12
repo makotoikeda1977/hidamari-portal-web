@@ -26,6 +26,7 @@ const HOME_ICONS = {
   asset:   '<circle cx="8" cy="8" r="4"/><path d="M11 11l7 7m-3 0h3v-3"/>',
   staff:   '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5"/><path d="M16 6a3 3 0 0 1 0 6m2 8c0-2-1-3.6-3-4.4"/>',
   mypage:  '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8" cy="11" r="2"/><path d="M13 9h5m-5 3h5M6 16c0-1.5 1-2.4 2-2.4s2 .9 2 2.4"/>',
+  shift: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18"/><path d="M8 15h2m4 0h2"/>',
   contacts: '<path d="M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M3 7h3M3 12h3M3 17h3"/><circle cx="12" cy="10" r="2"/><path d="M9 16c0-1.7 1.3-3 3-3s3 1.3 3 3"/>',
   reimburse: '<path d="M4 6h16v12H4z"/><path d="M8 10h2m4 0h2M8 14h8"/><circle cx="12" cy="12" r="0"/>',
   setting: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M19 5l-2 2M7 17l-2 2"/>',
@@ -236,6 +237,12 @@ function drawHome(v, d, stale) {
     { k: 'apply',   label: '届出・証明書', badge: 0 },
     { k: 'chat',    label: '総務に連絡',   badge: d.unread_chat || 0 }
   ];
+  // シフト制の方には、毎月かならず使うものなのでトップに出す
+  if (d.shift && d.shift.target) {
+    menu.splice(1, 0, { k: 'shift', label: 'シフト希望',
+                        badge: d.shift.wait ? 1 : 0 });
+    menu.pop();                       // 6つに収める（総務に連絡はその他へ）
+  }
   // 「その他」に入れる機能。件数はまとめて「その他」ボタンに出す。
   const moreBadge = (d.doc_wait || 0) + (d.sign_wait || 0)
                   + (d.asset_wait || 0) + (d.profile_wait || 0);
@@ -437,6 +444,8 @@ function openMoreSheet() {
     { k: 'asset',   label: '貸与品',       badge: d.asset_wait || 0 },
     { k: 'reimburse', label: '立替の精算',  badge: 0 },
     { k: 'contacts', label: '連絡先',       badge: 0 },
+    ...(S.home && S.home.shift && S.home.shift.target
+        ? [{ k: 'chat', label: '総務に連絡', badge: (S.home.unread_chat || 0) }] : []),
     { k: 'staff',   label: '社員名簿',     badge: 0 },
     { k: 'mypage',  label: 'わたしの情報', badge: d.profile_wait || 0 },
     { k: 'setting', label: '設定',        badge: 0 }
@@ -453,6 +462,7 @@ function openMoreSheet() {
   const open = {
     doc: openDocList, sign: openSignList, asset: openAssetSheet,
     reimburse: openReimburseSheet, contacts: openContactsSheet,
+    shift: openShiftSheet, chat: openChatSheet,
     staff: openStaffSheet, mypage: openMyPageSheet, setting: openSettingSheet
   };
   $('moreGrid').querySelectorAll('[data-k]').forEach(b => b.onclick = () => open[b.dataset.k]());
@@ -3223,4 +3233,146 @@ function bindPlateInput(inputId, nameId, cars, onPick) {
   };
   el.oninput = show;
   show();
+}
+
+/* ============================ シフト希望 ============================ */
+
+let SHIFT = null;
+
+async function openShiftSheet(month) {
+  openSheet(`
+    <div class="sheet-title"><h2>シフト希望</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <div id="shBody"><div class="loading">読み込み中…</div></div>`);
+  await renderShift(month);
+}
+
+async function renderShift(month) {
+  const v = $('shBody');
+  if (!v) return;
+  try {
+    const d = await API.call('shift.mine', month ? { month } : {});
+    SHIFT = d;
+    if (!d.target) {
+      v.innerHTML = `<div class="empty-state">
+        この画面は、シフトで動く事業所（${d.offices.map(esc).join('・')}）の方のためのものです。</div>`;
+      return;
+    }
+
+    const byDate = {};
+    d.days.forEach(x => { byDate[x.date] = x; });
+    const y = Number(d.month.slice(0, 4)), m = Number(d.month.slice(5, 7));
+    const week = ['日', '月', '火', '水', '木', '金', '土'];
+    const rows = [];
+    for (let i = 1; i <= d.days_in_month; i++) {
+      const date = `${d.month}-${String(i).padStart(2, '0')}`;
+      const w = new Date(y, m - 1, i).getDay();
+      rows.push({ date, day: i, w, wish: byDate[date] || null });
+    }
+    const done = d.status === '提出ずみ' || d.status === '確定';
+
+    v.innerHTML = `
+      <div class="chip-row" style="margin-bottom:10px;">
+        ${d.months.map(mm => `<button class="chip ${mm === d.month ? 'on' : ''}"
+          data-m="${esc(mm)}">${Number(mm.slice(5, 7))}月</button>`).join('')}
+      </div>
+
+      <div class="card" style="margin-bottom:12px; ${d.closed ? 'border-color:var(--warn);' : ''}">
+        <b>${Number(d.month.slice(5, 7))}月のシフト希望</b>
+        <p class="muted" style="margin:4px 0 0;">
+          ${d.deadline ? `締切：<b>${fmtYmd(d.deadline)}</b>` : '締切は決まっていません'}
+          ${d.closed ? '　<span class="badge warn">締切を過ぎています</span>' : ''}<br>
+          ${done ? `<span class="badge ok">${esc(d.status)}</span>　
+              ${d.submitted_at ? fmtDateTime(d.submitted_at) + ' に出しました' : ''}`
+            : '日にちを押して、入れる／入れないを選んでください。'}
+        </p>
+        ${d.comment ? `<p style="margin:8px 0 0; color:var(--warn);">
+          総務より：${esc(d.comment)}</p>` : ''}
+      </div>
+
+      <div class="list" id="shDays">
+        ${rows.map(r => `
+          <div class="item" data-date="${esc(r.date)}"
+               style="${r.w === 0 ? 'color:var(--warn);' : r.w === 6 ? 'color:#2b5480;' : ''}">
+            <div class="grow">
+              <div class="title">${r.day}日（${week[r.w]}）</div>
+              ${r.wish && r.wish.note ? `<div class="meta">${esc(r.wish.note)}</div>` : ''}
+            </div>
+            <span class="badge ${r.wish ? (r.wish.mark === '×' ? 'warn' : 'ok') : ''}">${
+              r.wish ? esc(r.wish.mark === '時間'
+                ? `${r.wish.start}-${r.wish.end}` : r.wish.mark) : '—'}</span>
+          </div>`).join('')}
+      </div>
+
+      <label class="field" style="margin-top:14px;"><span>総務へのひとこと（任意）</span>
+        <textarea id="shNote" rows="2"
+          placeholder="例）15日は子どもの行事で早く上がりたいです">${esc(d.note || '')}</textarea></label>
+
+      ${d.closed || d.status === '確定' ? '' : `
+        <button class="btn primary block" id="shSubmit">
+          ${done ? 'この内容で出し直す' : '総務に出す'}</button>`}
+      <p class="muted" style="margin-top:10px;">
+        出したあとでも、締切までなら直せます。</p>`;
+
+    v.querySelectorAll('[data-m]').forEach(b =>
+      b.onclick = () => renderShift(b.dataset.m));
+    if (!d.closed && d.status !== '確定') {
+      v.querySelectorAll('[data-date]').forEach(el =>
+        el.onclick = () => openShiftPick(el.dataset.date, byDate[el.dataset.date]));
+    }
+    if ($('shSubmit')) $('shSubmit').onclick = async () => {
+      try {
+        await API.call('shift.save', { month: d.month, days: [], note: $('shNote').value })
+          .catch(() => { });        // ひとことだけの保存は失敗しても止めない
+        await API.call('shift.submit', { month: d.month, note: $('shNote').value });
+        toast('総務に出しました');
+        renderShift(d.month);
+      } catch (e) { toast(e.message, 'err'); }
+    };
+  } catch (e) { v.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+}
+
+/** 1日ぶんの希望を選ぶ。押すたびに1日だけ送る（通信が切れても分かるように） */
+function openShiftPick(date, cur) {
+  const marks = (SHIFT && SHIFT.marks) || [];
+  openSheet(`
+    <div class="sheet-title"><h2>${fmtDate(date)}</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <div class="kind-grid" id="shMarks" style="grid-template-columns:repeat(2,1fr);">
+      ${marks.map(m => `<button class="kind-btn ${cur && cur.mark === m.mark ? 'on' : ''}"
+        data-mark="${esc(m.mark)}">${esc(m.mark)}　${esc(m.label)}</button>`).join('')}
+    </div>
+    <div id="shTime" style="display:${cur && cur.mark === '時間' ? '' : 'none'}; margin-top:12px;">
+      <div class="cols">
+        <label class="field"><span>から</span>
+          <input type="time" id="shStart" value="${esc((cur && cur.start) || '09:00')}"></label>
+        <label class="field"><span>まで</span>
+          <input type="time" id="shEnd" value="${esc((cur && cur.end) || '17:00')}"></label>
+      </div>
+    </div>
+    <label class="field" style="margin-top:8px;"><span>ひとこと（任意）</span>
+      <input type="text" id="shDayNote" value="${esc((cur && cur.note) || '')}"
+        placeholder="例）午後は通院のため"></label>
+    <button class="btn primary block" id="shPickSave">この日を決める</button>
+    ${cur ? '<button class="btn ghost block" style="margin-top:8px;" id="shPickClear">消す</button>' : ''}`);
+
+  let picked = cur ? cur.mark : '';
+  $('shMarks').querySelectorAll('.kind-btn').forEach(b => b.onclick = () => {
+    picked = b.dataset.mark;
+    $('shMarks').querySelectorAll('.kind-btn').forEach(x => x.classList.toggle('on', x === b));
+    $('shTime').style.display = picked === '時間' ? '' : 'none';
+  });
+
+  const send = async (days) => {
+    try {
+      await API.call('shift.save', { month: SHIFT.month, days });
+      closeSheet(); openShiftSheet(SHIFT.month);
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  $('shPickSave').onclick = () => {
+    if (!picked) return toast('どれか選んでください', 'err');
+    send([{ date, mark: picked, start: $('shStart') ? $('shStart').value : '',
+            end: $('shEnd') ? $('shEnd').value : '', note: $('shDayNote').value }]);
+  };
+  if ($('shPickClear')) $('shPickClear').onclick = () => send([{ date, mark: '' }]);
 }

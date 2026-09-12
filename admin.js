@@ -67,7 +67,7 @@ function render(v) {
   ({ dash: renderDash, leaves: renderLeaves, corr: renderCorrections, dev: renderDev,
      leave: renderLeave,
      chat: renderChat, apply: renderApplications, exp: renderExpenses, docs: renderDocs,
-     reimburse: renderReimbursements,
+     reimburse: renderReimbursements, shift: renderShifts,
      emps: renderEmps, offices: renderOffices, kaonavi: renderKaonavi,
      treat: renderTreatments, drive: renderDrives, incident: renderIncidents,
      contract: renderContracts, pledge: renderPledge, assets: renderAssets,
@@ -3571,3 +3571,140 @@ const thisMonthStr = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
+
+/* ============================ シフト希望 ============================ */
+
+let SH_MONTH = '', SH_OFFICE = '';
+
+async function renderShifts() {
+  const v = $('v-shift');
+  v.innerHTML = '<div class="loading">読み込み中…</div>';
+  try {
+    const d = await API.call('admin.shifts',
+      Object.assign({ office: SH_OFFICE }, SH_MONTH ? { month: SH_MONTH } : {}));
+    SH_MONTH = d.month;
+    setCount('cShift', d.not_submitted);
+
+    // 何人出られるかを、まず日ごとに。シフトを組むときの入口はここ
+    const need = d.by_date.map(x => x.ok);
+    const low = Math.min(...(need.length ? need : [0]));
+
+    v.innerHTML = `
+      <div class="kpis">
+        <div class="kpi"><b>${d.rows.length}</b><span>対象者</span></div>
+        <div class="kpi"><b>${d.submitted}</b><span>出してくれた</span></div>
+        <div class="kpi ${d.not_submitted ? 'alert' : ''}"><b>${d.not_submitted}</b><span>まだの方</span></div>
+        <div class="kpi ${low === 0 ? 'alert' : ''}"><b>${low}</b><span>いちばん少ない日の人数</span></div>
+      </div>
+
+      <div class="card-head">
+        <h2>${Number(d.month.slice(5, 7))}月のシフト希望</h2>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="month" id="shMonth" value="${esc(d.month)}">
+          <input type="date" id="shDl" value="${esc(d.deadline || '')}" title="締切">
+          <button class="btn sm" id="shDlSave">締切を決める</button>
+          <button class="btn sm" id="shRemind">まだの方に声をかける</button>
+          <button class="btn sm" id="shCsv">CSV</button>
+        </div>
+      </div>
+
+      <div class="chip-row" style="margin-bottom:12px;">
+        <button class="chip ${SH_OFFICE ? '' : 'on'}" data-o="">ぜんぶ</button>
+        ${d.offices.map(o => `<button class="chip ${SH_OFFICE === o ? 'on' : ''}"
+          data-o="${esc(o)}">${esc(o)}</button>`).join('')}
+      </div>
+
+      ${d.not_submitted ? `<div class="card" style="border-color:var(--warn); margin-bottom:12px;">
+        <b>まだ出していない方が ${d.not_submitted}名 います</b>
+        <p class="muted" style="margin:6px 0 0;">${d.not_submitted_names.map(esc).join('　／　')}</p>
+      </div>` : ''}
+
+      <div class="table-wrap"><table class="grid">
+        <thead>
+          <tr><th>氏名</th><th>状態</th>
+            ${d.dates.map(x => {
+              const w = new Date(Number(x.slice(0, 4)), Number(x.slice(5, 7)) - 1,
+                                 Number(x.slice(8))).getDay();
+              return `<th class="num" style="${w === 0 ? 'color:var(--warn);' : w === 6 ? 'color:#2b5480;' : ''}">${Number(x.slice(8))}</th>`;
+            }).join('')}
+            <th class="num">出られる日</th><th></th></tr>
+        </thead>
+        <tbody>
+          ${d.rows.map(r => `<tr>
+            <td style="white-space:nowrap;">${esc(r.name)}</td>
+            <td><span class="badge ${r.status === '確定' ? 'ok' : (r.status === '未提出' || r.status === '下書き') ? 'warn' : ''}">${esc(r.status)}</span></td>
+            ${r.days.map(w => `<td class="num" style="${w ? (w.mark === '×' ? 'background:var(--warn-soft);' : 'background:var(--ok-soft);') : ''}"
+              title="${w && w.note ? esc(w.note) : ''}">${
+                w ? esc(w.mark === '時間' ? w.start.slice(0, 2) : w.mark) : ''}</td>`).join('')}
+            <td class="num" style="font-weight:700;">${r.ok_days}</td>
+            <td style="white-space:nowrap;">
+              ${r.status !== '未提出' ? `
+                <button class="btn sm" data-ok="${esc(r.code)}">確定</button>
+                <button class="btn sm ghost" data-ng="${esc(r.code)}">調整</button>` : ''}
+            </td>
+          </tr>`).join('')}
+          <tr style="font-weight:700; background:var(--bg);">
+            <td>出られる人数</td><td></td>
+            ${d.by_date.map(x => `<td class="num" style="${x.ok === 0 ? 'color:var(--warn);' : ''}"
+              title="${esc(x.names.join('、'))}">${x.ok}</td>`).join('')}
+            <td></td><td></td>
+          </tr>
+        </tbody>
+      </table></div>
+
+      ${d.rows.some(r => r.note) ? `<div class="card" style="margin-top:14px;">
+        <b>ひとこと</b>
+        <div class="list" style="margin-top:6px;">${d.rows.filter(r => r.note).map(r => `
+          <div class="item" style="cursor:default;"><div class="grow">
+            <div class="title">${esc(r.name)}</div>
+            <div class="meta">${esc(r.note)}</div></div></div>`).join('')}</div>
+      </div>` : ''}
+
+      <p class="muted" style="margin-top:12px;">
+        緑は入れる日、赤は入れない日、空白はまだ答えていない日です。
+        いちばん下の行が、その日に出られる人数です（数字にカーソルを合わせると名前が出ます）。</p>`;
+
+    $('shMonth').onchange = () => { SH_MONTH = $('shMonth').value; renderShifts(); };
+    v.querySelectorAll('[data-o]').forEach(b =>
+      b.onclick = () => { SH_OFFICE = b.dataset.o; renderShifts(); });
+    $('shDlSave').onclick = async () => {
+      try {
+        await API.call('admin.shift.deadline', { month: d.month, date: $('shDl').value });
+        toast('締切を決めました'); renderShifts();
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    $('shRemind').onclick = async () => {
+      if (!confirm('まだ出していない方に、お願いのメールを送ります。よろしいですか？')) return;
+      try {
+        const r = await API.call('admin.shift.remind', { month: d.month, office: SH_OFFICE });
+        toast(`${r.sent}名に送りました`);
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    $('shCsv').onclick = async () => {
+      try {
+        const r = await API.call('admin.shift.export', { month: d.month, office: SH_OFFICE });
+        downloadCsv(`シフト希望_${r.month}.csv`, r.rows);
+        toast(`${r.count}名ぶんを書き出しました`);
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    v.querySelectorAll('[data-ok]').forEach(b => b.onclick = async () => {
+      const comment = prompt('本人に伝えることがあれば（空でも構いません）', '');
+      if (comment === null) return;
+      try {
+        await API.call('admin.shift.decide',
+          { code: b.dataset.ok, month: d.month, decision: '確定', comment });
+        toast('確定しました'); renderShifts();
+      } catch (e) { toast(e.message, 'err'); }
+    });
+    v.querySelectorAll('[data-ng]').forEach(b => b.onclick = async () => {
+      const comment = prompt('どこを調整してほしいか書いてください（本人に伝わります）');
+      if (!comment) return;
+      try {
+        await API.call('admin.shift.decide',
+          { code: b.dataset.ng, month: d.month, decision: '調整してほしい', comment });
+        toast('お願いしました'); renderShifts();
+      } catch (e) { toast(e.message, 'err'); }
+    });
+    hideActionsForViewer();
+  } catch (e) { v.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
+}
