@@ -2033,17 +2033,22 @@ async function renderDrives() {
 
     if (DRIVE_TAB === 'contacts') {
       const ct = await API.call('admin.contacts');
+      CT_CATS = ct.categories || []; CT_OFFICES = ct.offices || [];
       body.innerHTML = `
         <div class="cols">
           <div class="card">
-            <div class="card-head"><h2>事故のときの連絡先</h2>
+            <div class="card-head"><h2>連絡先</h2>
               <button class="btn sm primary" id="ctNew">追加</button></div>
-            <p class="muted">社員の画面に、この順番で大きく出ます。上から順にかけてもらう想定です。</p>
+            <p class="muted">社員の画面の「連絡先」に、この順番で出ます。
+              「すぐかけるところ」に印を付けたものは、事故のときの画面にも大きく出ます。</p>
             ${ct.contacts.length ? `<div class="list">${ct.contacts.map(c => `
               <div class="item" style="cursor:default;">
                 <div class="grow">
                   <div class="title">${esc(c.label)}${c.name ? '　' + esc(c.name) : ''}</div>
-                  <div class="meta">${esc(c.phone)}${c.company ? '　（' + esc(c.company) + 'のみ）' : ''}
+                  <div class="meta">${esc(c.phone)}${c.category ? '　' + esc(c.category) : ''}${
+                    c.urgent === 'yes' ? '　<span class="badge warn">すぐかける</span>' : ''}${
+                    c.office ? '　' + esc(c.office) : ''}${
+                    c.company ? '　（' + esc(c.company) + 'のみ）' : ''}
                     ${c.note ? '<br>' + esc(c.note) : ''}</div>
                 </div>
                 <button class="btn sm" data-ct="${esc(c.id)}">編集</button>
@@ -2073,6 +2078,7 @@ async function renderDrives() {
 
 /* ============================ 貸与品 ============================ */
 
+let CT_CATS = [], CT_OFFICES = [];
 let ASSET_FILTER = '';
 
 async function renderAssets() {
@@ -2497,11 +2503,24 @@ function openContactForm(c) {
         <input type="text" id="ctName" value="${esc(c.name || '')}"></label>
       <label class="field"><span>電話番号</span>
         <input type="text" id="ctPhone" value="${esc(c.phone || '')}" placeholder="048-000-0000"></label>
+      <label class="field"><span>まとまり</span>
+        <select id="ctCat"><option value=""></option>
+          ${(CT_CATS || []).map(x => `<option ${c.category === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}
+        </select></label>
+      <label class="field"><span>この事業所の番号（空なら全社）</span>
+        <select id="ctOffice"><option value=""></option>
+          ${(CT_OFFICES || []).map(x => `<option ${c.office === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}
+        </select></label>
+      <label class="field"><span>受付の時間</span>
+        <input type="text" id="ctHours" value="${esc(c.hours || '')}" placeholder="平日 9:00〜18:00"></label>
       <label class="field"><span>この法人だけに出す（空なら全社）</span>
         <input type="text" id="ctCompany" value="${esc(c.company || '')}"></label>
       <label class="field"><span>並び順（小さいほど上）</span>
         <input type="number" id="ctSort" value="${esc(c.sort || '100')}"></label>
     </div>
+    <label style="display:flex; align-items:center; gap:10px; margin:4px 0 12px;">
+      <input type="checkbox" id="ctUrgent" style="width:auto;" ${c.urgent === 'yes' ? 'checked' : ''}>
+      <span>「すぐかけるところ」に大きく出す（事故のときの画面にも出ます）</span></label>
     <label class="field"><span>補足</span><input type="text" id="ctNoteI" value="${esc(c.note || '')}"></label>
     <div class="btn-row">
       ${c.id ? '<button class="btn danger" id="ctDel">削除</button>' : ''}
@@ -2513,7 +2532,9 @@ function openContactForm(c) {
       await API.call('admin.contact.save', {
         id: c.id, label: $('ctLabel').value, name: $('ctName').value,
         phone: $('ctPhone').value, company: $('ctCompany').value,
-        sort: $('ctSort').value, note: $('ctNoteI').value });
+        sort: $('ctSort').value, note: $('ctNoteI').value,
+        category: $('ctCat').value, office: $('ctOffice').value,
+        hours: $('ctHours').value, urgent: $('ctUrgent').checked });
       closeSheet(); toast('保存しました'); renderDrives();
     } catch (e) { toast(e.message, 'err'); }
   };

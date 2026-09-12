@@ -26,6 +26,7 @@ const HOME_ICONS = {
   asset:   '<circle cx="8" cy="8" r="4"/><path d="M11 11l7 7m-3 0h3v-3"/>',
   staff:   '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5"/><path d="M16 6a3 3 0 0 1 0 6m2 8c0-2-1-3.6-3-4.4"/>',
   mypage:  '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8" cy="11" r="2"/><path d="M13 9h5m-5 3h5M6 16c0-1.5 1-2.4 2-2.4s2 .9 2 2.4"/>',
+  contacts: '<path d="M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M3 7h3M3 12h3M3 17h3"/><circle cx="12" cy="10" r="2"/><path d="M9 16c0-1.7 1.3-3 3-3s3 1.3 3 3"/>',
   reimburse: '<path d="M4 6h16v12H4z"/><path d="M8 10h2m4 0h2M8 14h8"/><circle cx="12" cy="12" r="0"/>',
   setting: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M19 5l-2 2M7 17l-2 2"/>',
   more:    '<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>'
@@ -434,6 +435,7 @@ function openMoreSheet() {
     { k: 'sign',    label: '雇用契約',     badge: d.sign_wait || 0 },
     { k: 'asset',   label: '貸与品',       badge: d.asset_wait || 0 },
     { k: 'reimburse', label: '立替の精算',  badge: 0 },
+    { k: 'contacts', label: '連絡先',       badge: 0 },
     { k: 'staff',   label: '社員名簿',     badge: 0 },
     { k: 'mypage',  label: 'わたしの情報', badge: d.profile_wait || 0 },
     { k: 'setting', label: '設定',        badge: 0 }
@@ -449,7 +451,7 @@ function openMoreSheet() {
 
   const open = {
     doc: openDocList, sign: openSignList, asset: openAssetSheet,
-    reimburse: openReimburseSheet,
+    reimburse: openReimburseSheet, contacts: openContactsSheet,
     staff: openStaffSheet, mypage: openMyPageSheet, setting: openSettingSheet
   };
   $('moreGrid').querySelectorAll('[data-k]').forEach(b => b.onclick = () => open[b.dataset.k]());
@@ -3114,4 +3116,86 @@ function openReimburseForm(categories, maxYen) {
       closeSheet(); toast('総務に送りました'); openReimburseSheet();
     } catch (e) { toast(e.message, 'err'); btn.disabled = false; btn.textContent = '総務に送る'; }
   };
+}
+
+/* ============================ 連絡先の一覧 ============================ */
+
+/**
+ * 「どこにかければいいんだっけ」で止まる時間をなくす。
+ * 番号はそのまま押せばかかる。急ぎのものは、いちばん上に大きく出す。
+ */
+async function openContactsSheet() {
+  openSheet(`
+    <div class="sheet-title"><h2>連絡先</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <div id="ctBody"><div class="loading">読み込み中…</div></div>`);
+  const v = $('ctBody');
+  try {
+    const d = await API.call('contacts.list');
+    if (!d.count) {
+      v.innerHTML = '<div class="empty-state">まだ登録がありません。総務にご連絡ください。</div>';
+      return;
+    }
+    v.innerHTML = `
+      <label class="field"><span>探す</span>
+        <input type="search" id="ctQ" placeholder="名前・用件・番号"></label>
+
+      ${d.urgent.length ? `<div class="card" style="margin-bottom:14px;">
+        <b>すぐかけるところ</b>
+        <div style="display:grid; gap:10px; margin-top:10px;">
+          ${d.urgent.map(c => callBtn(c, true)).join('')}
+        </div></div>` : ''}
+
+      <div id="ctList">
+        ${d.mine.length ? contactGroup(d.mine_office || 'あなたの事業所', d.mine) : ''}
+        ${d.groups.map(g => contactGroup(g.category, g.items)).join('')}
+      </div>
+
+      <p class="muted" style="margin-top:14px;">
+        番号を押すと、そのまま電話がかかります。<br>
+        足したいところ・変わったところがあれば「総務に連絡」からお知らせください。</p>`;
+
+    const q = $('ctQ');
+    q.oninput = () => {
+      const k = q.value.trim();
+      $('ctList').querySelectorAll('[data-search]').forEach(el => {
+        el.style.display = (!k || el.dataset.search.indexOf(k) >= 0) ? '' : 'none';
+      });
+      // 中身がぜんぶ隠れたまとまりは、見出しごと隠す
+      $('ctList').querySelectorAll('[data-group]').forEach(g => {
+        const any = Array.from(g.querySelectorAll('[data-search]'))
+          .some(el => el.style.display !== 'none');
+        g.style.display = any ? '' : 'none';
+      });
+    };
+  } catch (e) { v.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+}
+
+const telHref = (p) => String(p || '').replace(/[^\d#*+]/g, '');
+
+/** 電話をかけるボタン。大きいのは「すぐかける」用 */
+function callBtn(c, big) {
+  return `
+    <a class="btn ${big ? 'primary' : ''} block" href="tel:${esc(telHref(c.phone))}"
+       style="text-align:left; ${big ? 'padding:14px 16px;' : ''}">
+      <b style="display:block; font-size:${big ? '17' : '16'}px;">${esc(c.label)}</b>
+      <span style="font-size:15px;">${esc(c.phone)}</span>
+      ${c.name ? `<span style="font-size:13px; opacity:.85;">　${esc(c.name)}</span>` : ''}
+    </a>`;
+}
+
+function contactGroup(title, items) {
+  return `
+    <div data-group style="margin-bottom:16px;">
+      <div class="office-head">${esc(title)}</div>
+      <div class="list">${items.map(c => `
+        <div class="item" style="cursor:default;"
+             data-search="${esc([c.label, c.name, c.note, c.phone, c.office].join(' '))}">
+          <div class="grow">
+            <div class="title">${esc(c.label)}${c.name ? '　' + esc(c.name) : ''}</div>
+            <div class="meta">${c.hours ? esc(c.hours) + '<br>' : ''}${esc(c.note || '')}</div>
+          </div>
+          <a class="btn sm" href="tel:${esc(telHref(c.phone))}">${esc(c.phone)}</a>
+        </div>`).join('')}</div>
+    </div>`;
 }
