@@ -392,6 +392,7 @@ function drawHome(v, d, stale) {
   if ($('punchQr')) $('punchQr').onclick = () => openQrScanner();
   if ($('punchOut')) $('punchOut').onclick = () => doPunch('out');
   if ($('punchReason')) $('punchReason').onclick = () => openReasonSheet(d.punch.date);
+  if ($('punchReason2')) $('punchReason2').onclick = () => openReasonSheet(d.punch.date);
   if ($('homeDocs')) $('homeDocs').onclick = () => openDocList();
   if ($('homeMore')) $('homeMore').onclick = () => openMoreSheet();
   if ($('cfOpen')) $('cfOpen').onclick = () => { S.month = cf.month; openKintaiSheet(); };
@@ -1436,7 +1437,10 @@ function punchCard(p, stale) {
         ? `<button class="btn block" id="punchReason" style="margin-top:10px; border-color:var(--warn); color:var(--warn);">
              理由を報告する（遅延証明も送れます）</button>` : ''}
       ${rec.reported_at ? `<p class="muted" style="margin:10px 0 0;">
-          報告ずみ：${esc(rec.reason_type || '')} ${esc(rec.reason || '')}</p>` : ''}
+          報告ずみ：${esc(rec.reason_type || '')} ${esc(rec.reason || '')}
+          ${rec.cert_url ? '　<span class="badge ok">証明あり</span>' : ''}</p>
+        <button class="btn sm block" id="punchReason2" style="margin-top:8px;">
+          報告を直す・遅延証明を足す</button>` : ''}
       <p class="muted" style="margin:10px 0 0;">
         ${useQr ? '事業所に貼ってあるQRコードを読み取ってください。'
           : field ? '訪問先へ直行するときは、そのまま押してください。'
@@ -1509,18 +1513,19 @@ async function openReasonSheet(date) {
     <label class="field"><span>くわしい事情（任意）</span>
       <textarea id="rBody" style="min-height:70px;"
         placeholder="例）大宮駅で人身事故があり、20分ほど電車が止まりました"></textarea></label>
-    <div id="certBox" style="display:none;">
-      <label class="field"><span>遅延証明書の写真</span>
-        <input type="file" id="rCert" accept="image/*,application/pdf" capture="environment"></label>
-      <p class="muted">駅でもらった紙、またはスマホの画面を撮って送ってください。</p>
-    </div>
+    <label class="field"><span>遅延証明書などの写真（あれば）</span>
+      <input type="file" id="rCert" accept="image/*,application/pdf" capture="environment"></label>
+    <p class="muted" id="certHelp" style="margin:-8px 0 12px;">
+      駅でもらった紙、またはスマホの画面を撮って貼ってください。</p>
     <button class="btn primary block" id="rSend">報告する</button>`);
 
   let picked = '';
   $('reasonGrid').querySelectorAll('.kind-btn').forEach(b => b.onclick = () => {
     picked = b.dataset.r;
     $('reasonGrid').querySelectorAll('.kind-btn').forEach(x => x.classList.toggle('on', x === b));
-    $('certBox').style.display = picked.indexOf('遅延') >= 0 ? '' : 'none';
+    $('certHelp').textContent = picked.indexOf('遅延') >= 0
+      ? '駅でもらった遅延証明書、またはスマホの画面を撮って貼ってください。'
+      : 'そのときのことが分かるものがあれば貼ってください。無くても大丈夫です。';
   });
   $('rSend').onclick = async () => {
     if (!picked) return toast('理由を選んでください', 'err');
@@ -1877,8 +1882,10 @@ async function openTripSheet() {
         <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
       <p class="muted" style="margin-top:0;">休みの日に社用車で遠くまで出かけるときは、前もって申請してください。
         承認されてから使えます（事故のときの保険の扱いに関わります）。当日は「出発を記録する」もお願いします。</p>
-      <label class="field"><span>使う車</span>
-        <select id="tpCar">${d.cars.map(c => `<option value="${esc(c.id)}">${esc(c.name)}${c.plate4 ? '（' + esc(c.plate4) + '）' : ''}${c.office ? '　' + esc(c.office) : ''}</option>`).join('')}</select></label>
+      <label class="field"><span>使う車のナンバー（下4桁）</span>
+        <input type="tel" id="tpPlate" inputmode="numeric" maxlength="4"
+               placeholder="1234" class="plate-input"></label>
+      <div class="muted" id="tpCarName" style="margin-top:-8px; margin-bottom:12px;"></div>
       <label class="field"><span>出発日</span><input type="date" id="tpFrom" min="${esc(d.today)}"></label>
       <label class="field"><span>帰着日</span><input type="date" id="tpTo" min="${esc(d.today)}"></label>
       <label class="field"><span>行き先</span><input type="text" id="tpDest" placeholder="例：長野県 軽井沢"></label>
@@ -1898,12 +1905,13 @@ async function openTripSheet() {
           </div>
           ${(r.status === '申請中' || (r.status === '承認' && r.date_from >= d.today)) ? `<button class="btn sm" data-cancel="${esc(r.id)}">取消</button>` : ''}
         </div>`).join('')}</div>` : '<div class="empty-state">まだ申請はありません</div>'}`);
+    bindPlateInput('tpPlate', 'tpCarName', d.cars);
     $('tpFrom').onchange = () => { if (!$('tpTo').value || $('tpTo').value < $('tpFrom').value) $('tpTo').value = $('tpFrom').value; };
     $('tpGo').onclick = async () => {
       const btn = $('tpGo'); btn.disabled = true; btn.textContent = '送信中…';
       try {
         const r = await API.call('trip.create', {
-          car_id: $('tpCar').value, date_from: $('tpFrom').value, date_to: $('tpTo').value || $('tpFrom').value,
+          plate4: $('tpPlate').value, date_from: $('tpFrom').value, date_to: $('tpTo').value || $('tpFrom').value,
           destination: $('tpDest').value, purpose: $('tpPurpose').value, distance_km: $('tpKm').value,
           passengers: $('tpWith').value, fuel_card: $('tpFuel').checked, note: $('tpNote').value
         });
@@ -2085,10 +2093,10 @@ function openIncidentForm() {
       <input type="text" id="icPlace" placeholder="さいたま市北区宮原町の交差点 など"></label>
     <label class="field"><span>種類</span>
       <select id="icType">${g.types.map(t => `<option>${esc(t)}</option>`).join('')}</select></label>
-    ${cars.length ? `<label class="field"><span>車</span>
-      <select id="icCar"><option value="">— 選ばない —</option>
-        ${cars.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}
-      </select></label>` : ''}
+    <label class="field"><span>車のナンバー（下4桁・分かれば）</span>
+      <input type="tel" id="icPlate" inputmode="numeric" maxlength="4"
+             placeholder="1234" class="plate-input"></label>
+    <div class="muted" id="icCarName" style="margin-top:-8px; margin-bottom:12px;"></div>
     <label class="field"><span>けがをした人</span>
       <select id="icInjury">
         <option>いない</option><option>いる（軽い）</option><option>いる（救急車を呼んだ）</option>
@@ -2106,6 +2114,7 @@ function openIncidentForm() {
       <input type="file" id="icPhoto" accept="image/*" capture="environment"></label>
     <button class="btn primary block" id="icSend">総務に報告する</button>`);
 
+  bindPlateInput('icPlate', 'icCarName', cars);
   $('icSend').onclick = async () => {
     const btn = $('icSend'); btn.disabled = true; btn.textContent = '送信中…';
     try {
@@ -2113,7 +2122,7 @@ function openIncidentForm() {
       await API.call('incident.report', {
         occurred_at: $('icAt').value.replace('T', ' '),
         place: $('icPlace').value, type: $('icType').value,
-        car_id: $('icCar') ? $('icCar').value : '',
+        plate4: $('icPlate') ? $('icPlate').value : '',
         injury: $('icInjury').value, police: $('icPolice').value,
         counterpart: $('icOther').value, detail: $('icDetail').value,
         file: f ? await shrinkImage(f) : null
@@ -2702,8 +2711,7 @@ function renderDirectory() {
         </button>`).join('')}</div>`).join('')
       : '<div class="empty-state">見つかりませんでした</div>'}
     <p class="muted" style="margin-top:14px;">
-      顔写真は「書類の提出」で送った顔写真をそのまま使っています。
-      名簿に出したくないときは「わたしの情報」から外せます。</p>`;
+      顔写真は「書類の提出」で送った顔写真をそのまま使っています。</p>`;
 
   const qEl = $('dirQ');
   qEl.oninput = () => { DIR_FILTER.q = qEl.value; renderDirectory(); $('dirQ').focus(); };
@@ -2833,10 +2841,6 @@ async function renderMyPage() {
         </div>
         <label class="field"><span>電話番号</span>
           <input type="tel" id="pEmgTel" value="${esc(p.emg_tel || '')}"></label>
-        <label style="display:flex; align-items:center; gap:10px; margin:12px 0;">
-          <input type="checkbox" id="pHide" style="width:auto;"
-            ${p.photo_public === 'no' ? 'checked' : ''}>
-          <span>顔写真を社員名簿に出さない</span></label>
         <button class="btn primary block" id="pSave">保存する</button>
       </div>
 
@@ -2864,8 +2868,7 @@ async function renderMyPage() {
         await API.call('profile.save', {
           tel: $('pTel').value, postal: $('pPostal').value, address: $('pAddr').value,
           emg_name: $('pEmgName').value, emg_relation: $('pEmgRel').value,
-          emg_tel: $('pEmgTel').value,
-          photo_public: $('pHide').checked ? 'no' : ''
+          emg_tel: $('pEmgTel').value
         });
         DIR = null;                      // 名簿を作り直させる
         toast('保存しました');
@@ -3198,4 +3201,26 @@ function contactGroup(title, items) {
           <a class="btn sm" href="tel:${esc(telHref(c.phone))}">${esc(c.phone)}</a>
         </div>`).join('')}</div>
     </div>`;
+}
+
+/* ---- 車はナンバーの下4桁で入れる ----
+   48台のプルダウンから探すのは、現場でも事故のときにも辛い。
+   打ったそばから車名を出して、合っているかをその場で確かめられるようにする。 */
+function bindPlateInput(inputId, nameId, cars, onPick) {
+  const el = $(inputId), out = $(nameId);
+  if (!el || !out) return;
+  const show = () => {
+    const p4 = el.value.replace(/[^0-9]/g, '');
+    const car = (cars || []).find(x => x.plate4 === p4);
+    if (car) {
+      out.innerHTML = `<span class="badge ok">${esc(car.name)}</span>${
+        car.office ? ' ' + esc(car.office) : ''}`;
+    } else {
+      out.textContent = p4.length === 4
+        ? 'この番号の車は台帳にありません。このまま進めます。' : '';
+    }
+    if (onPick) onPick(car);
+  };
+  el.oninput = show;
+  show();
 }
