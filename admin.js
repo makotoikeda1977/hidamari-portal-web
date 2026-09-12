@@ -2627,6 +2627,7 @@ async function renderTreatments() {
         <h2>お一人ごとの回数（レセプトの確認用）</h2>
         <button class="btn sm" id="trCsv">日報のCSV</button>
         <button class="btn sm" id="trPatCsv">患者マスタのCSV</button>
+        <button class="btn sm" id="trPatIn">患者をまとめて登録</button>
       </div>
       ${d.patients.length ? `<div class="table-wrap" style="margin-bottom:20px;"><table class="grid">
         <thead><tr><th>お名前</th><th class="num">回数</th><th class="num">合計(分)</th>
@@ -2679,6 +2680,7 @@ async function renderTreatments() {
         saveCsv(r.csv, `治療院日報_${A.month}.csv`);
       } catch (e) { toast(e.message, 'err'); }
     };
+    $('trPatIn').onclick = openPatientImport;
     $('trPatCsv').onclick = async () => {
       try {
         const r = await API.call('admin.patients.export');
@@ -3719,4 +3721,93 @@ async function renderShifts() {
     });
     hideActionsForViewer();
   } catch (e) { v.innerHTML = `<div class="card"><p class="muted">${esc(e.message)}</p></div>`; }
+}
+
+/* ---- 患者をまとめて登録 ----
+   レセプトを作る総務アプリ側が療養費支給申請書から患者を復元したので、
+   そのCSVをそのまま読む。IDは向こうの採番をそのまま使う（両方で同じIDを持つため）。 */
+
+function openPatientImport() {
+  openSheet(`
+    <div class="sheet-title"><h2>患者をまとめて登録</h2>
+      <button class="btn sm ghost" onclick="closeSheet()">閉じる</button></div>
+    <p class="muted">
+      列は <code>患者ID, 氏名, ふりがな, 事業所, 在籍</code>。
+      総務アプリの「患者マスタのCSV」がそのまま読めます。<br>
+      <b>同じ患者IDがあれば上書き</b>します。何度読み込んでも増えません。</p>
+    <label class="field"><span>CSVをえらぶ</span>
+      <input type="file" id="piFile" accept=".csv,text/csv"></label>
+    <div id="piPreview"></div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn block" id="piDry" disabled>まず下見する</button>
+      <button class="btn primary block" id="piGo" disabled>取り込む</button>
+    </div>
+    <div id="piLog" class="muted" style="margin-top:12px; white-space:pre-wrap;"></div>`);
+
+  let items = [];
+  $('piFile').onchange = () => {
+    const f = $('piFile').files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      items = parsePatientCsv(String(r.result));
+      $('piPreview').innerHTML = items.length
+        ? `<p><b>${items.length}名</b>を読みました。先頭：${esc(items[0].name)}／末尾：${esc(items[items.length - 1].name)}</p>`
+        : '<p class="muted">読めませんでした。列の見出しをご確認ください。</p>';
+      $('piDry').disabled = $('piGo').disabled = !items.length;
+    };
+    r.readAsText(f);
+  };
+
+  const run = async (dry) => {
+    $('piDry').disabled = $('piGo').disabled = true;
+    try {
+      const d = await API.call('import.patients', { items, dry_run: dry });
+      $('piLog').textContent = [
+        dry ? `入る予定：${d.ready.length}名` : `入りました：追加 ${d.added}名／上書き ${d.updated}名`,
+        d.same_name.length
+          ? `同じお名前の方がいます（まとめずに、そのまま入れます。別人かどうかご確認ください）：\n　${d.same_name.join('\n　')}`
+          : '',
+        d.no_kana.length
+          ? `ふりがながありません（かしら文字で探せません）：${d.no_kana.join('、')}` : '',
+        d.skipped.length ? `入れませんでした：${d.skipped.join('、')}` : ''
+      ].filter(Boolean).join('\n\n');
+      if (!dry) { toast(`${d.added + d.updated}名を登録しました`); renderTreatments(); }
+    } catch (e) {
+      $('piLog').textContent = e.message;
+    }
+    $('piDry').disabled = $('piGo').disabled = false;
+  };
+  $('piDry').onclick = () => run(true);
+  $('piGo').onclick = () => run(false);
+}
+
+/** 見出し行から列の位置を決める。列の並びが変わっても読めるように */
+function parsePatientCsv(text) {
+  const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) return [];
+  const cell = (line) => {
+    const out = []; let cur = '', q = false;
+    for (const ch of line) {
+      if (ch === '"') { q = !q; continue; }
+      if (ch === ',' && !q) { out.push(cur); cur = ''; continue; }
+      cur += ch;
+    }
+    out.push(cur);
+    return out.map(x => x.trim());
+  };
+  const head = cell(lines[0]);
+  const at = (...names) => head.findIndex(h => names.some(n => h.indexOf(n) >= 0));
+  const iId = at('患者ID', 'ID', 'id');
+  const iName = at('氏名', '患者名', 'name');
+  const iKana = at('ふりがな', 'カナ', 'kana');
+  const iOffice = at('事業所', 'office');
+  const iActive = at('在籍', 'active');
+  if (iId < 0 || iName < 0) return [];
+  return lines.slice(1).map(cell).filter(c => c[iName]).map(c => ({
+    id: c[iId], name: c[iName],
+    kana: iKana >= 0 ? c[iKana] : '',
+    office: iOffice >= 0 ? c[iOffice] : '',
+    active: iActive >= 0 && c[iActive].indexOf('削除') >= 0 ? 'no' : 'yes'
+  }));
 }
